@@ -339,7 +339,7 @@ literal
     ;
 
 list_literal
-    : LeftBracket (expression (Comma expression)* )+ RightBracket
+    : LeftBracket expression (Comma expression)* RightBracket
     ;
 
 variable_access
