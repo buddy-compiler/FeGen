@@ -1,0 +1,43 @@
+fegen for_stmt;
+
+list_literal
+    : LeftBacket literal[l_1] (',' literal[l_2])* RightBacket {
+        return l_1 + l_2;
+    }
+    ; 
+
+for_stmt
+    : FOR Identifier[id] Colon expression[expr] block {
+        for(x : expr){
+            push_symbol(x, id);
+            visit(block);
+            pop_symbol(id);
+        }
+    }
+    ;
+
+expression
+    : Identifier[id] {
+        return find_symbol(id);
+    }
+    | literal[l] {return l;} 
+    ;
+
+literal
+    : list_literal[l] {return l;}
+    | Number[num] {
+        return float(num);
+    }
+    ;
+
+FOR: 'for';
+
+Identifier: 'a'..'z'+;
+
+Number: '1'..'9' '0'..'9'*;
+
+Colon: ':';
+
+LeftBacket: '[';
+
+RightBacket: ']';

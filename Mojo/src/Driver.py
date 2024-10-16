@@ -8,7 +8,7 @@ def main(argv):
     lexer = MojoLexer(input_stream)
     stream = CommonTokenStream(lexer)
     parser = MojoParser(stream)
-    tree = parser.module()
+    tree = parser.var_assign()
     print(tree.toStringTree())
 
 
