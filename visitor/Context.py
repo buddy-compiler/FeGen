@@ -1,6 +1,6 @@
 from __future__ import annotations
 from .Rule import *
-from typing import Dict, Callable
+from typing import Dict, Callable, Tuple
 import sys
 from io import StringIO
 from antlr4 import ParserRuleContext
@@ -155,7 +155,8 @@ class Context:
 
         self.visitorBuilder.createStatementBlock(
             "def __init__(self) -> None:",
-            lambda: self.visitorBuilder.writeNewLine("super().__init__()")
+            lambda: self.visitorBuilder.writeNewLine("super().__init__()"),
+            "\n"
         )
 
         def genBodyForGeneratedRule(rule: Rule):
@@ -174,7 +175,8 @@ class Context:
                 self.visitorBuilder.createStatementBlock(
                     head="def visit{0}(self, ctx: {1}.{0}Context):".format(
                         rule.name.capitalize(), self.moduleName),
-                    body=lambda: genBodyForGeneratedRule(rule)
+                    body=lambda: genBodyForGeneratedRule(rule),
+                    tail="\n"
                 )
 
     def dumpVisitor(self, output: TextIO = sys.stdout):
@@ -342,4 +344,113 @@ class VisitorBuilder(Builder):
         self.writeNewLine(
             fstr.format(", ".join(childRetList), str(
                 child), str(index) if count > 0 else "")
+        )
+
+    def createIFStmt(self, cond_and_body: List[Tuple[str, Callable[[None], None]]], else_body: Callable[[None], None] = None, usingVariables: List[str] = None):
+        assert len(cond_and_body) > 0
+        index = 0
+        usingVarStr = ", ".join(usingVariables)
+
+        def initializeVar(opname):
+            if usingVariables is None or len(usingVariables) == 0:
+                return
+            if len(usingVariables) > 1:
+                self.writeNewLine(
+                    "{} = {}.initialValues".format(usingVarStr, opname))
+            else:
+                self.writeNewLine(
+                    "{} = {}.initialValues[0]".format(usingVarStr[0], opname))
+        # if cond is runtime variable
+
+        def variableCond(cond_and_body: List[Tuple[str, Callable[[None], None]]]):
+            cond, if_body = cond_and_body[0]
+            nonlocal index
+            if index == 0:
+                ifOpName = "ifop"+str(index)
+            else:
+                ifOpName = "ifop"
+            index += 1
+            self.writeNewLine("{} = IfElseStmt({}, [{}])".format(
+                ifOpName, cond, usingVarStr))
+
+            def thenBodyContent():
+                initializeVar(ifOpName)
+                if_body()
+                self.writeNewLine(
+                    "{}.yieldVar([{}])".format(ifOpName, usingVarStr))
+
+            def elseBodyContent():
+                initializeVar(ifOpName)
+                if len(cond_and_body) <= 1:
+                    if else_body is not None:
+                        else_body()
+                else:
+                    variableCond(cond_and_body[1:])
+                self.writeNewLine(
+                    "{}.yieldVar([{}])".format(ifOpName, usingVarStr))
+
+            self.createStatementBlock(
+                head="with {}.thenBody:".format(ifOpName),
+                body=thenBodyContent
+            )
+
+            self.createStatementBlock(
+                head="with {}.elseBody:".format(ifOpName),
+                body=elseBodyContent
+            )
+
+            if len(usingVariables) == 1:
+                self.writeNewLine("{} = {}.results[0]".format(
+                    usingVariables[0], ifOpName))
+            else:
+                self.writeNewLine(
+                    "{} = {}.results".format(usingVarStr, ifOpName))
+        # if cond is compile time constant
+
+        def ctcCond():
+            for idx, (cond, if_body) in enumerate(cond_and_body):
+                if idx == 0:
+                    stmt_head = "if"
+                else:
+                    stmt_head = "elif"
+                self.createStatementBlock(
+                    head="{} {}:".format(stmt_head, cond),
+                    body=if_body
+                )
+            if else_body:
+                self.createStatementBlock(
+                    head="else:",
+                    body=else_body
+                )
+
+        firstCond = cond_and_body[0][0]
+        self.createStatementBlock(
+            head="if ({}).isVariable:".format(firstCond),
+            body=lambda: variableCond(cond_and_body)
+        )
+        self.createStatementBlock(
+            head="else:",
+            body=ctcCond
+        )
+
+    def createForStmt(self, iterating_var: str, iterable: str, for_body: Callable[[None], None]):
+        # iterable is a runtime variable
+        def variableIterable():
+            self.writeNewLine("affine.forOp({})".format(iterable))
+            self.writeNewLine("# do something to set ip, loc")
+            for_body()
+
+        def ctcIterable():
+            self.createStatementBlock(
+                head="for {} in {}:".format(iterating_var, iterable),
+                body=for_body
+            )
+
+        self.createStatementBlock(
+            head="if ({}).isVariable:".format(iterable),
+            body=variableIterable
+        )
+        self.createStatementBlock(
+            "else:",
+            body=ctcIterable
         )

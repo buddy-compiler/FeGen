@@ -136,21 +136,7 @@ WHILE: 'while';
 
 RETURN: 'return';
 
-// identifiers
-
-LexerRuleName: UPPERCASE (NONDIGIT | DIGIT)*;
-
-ParserRuleName: LOWERCASE (NONDIGIT | DIGIT)*;
-
-// literal
-
-StringLiteral: SHORT_STRING_LITERAL | LONG_STRING_LITERAL;
-
-BoolLiteral: TRUE | FALSE;
-
-IntegerLiteral: INTEGER;
-
-FloatPointLiteral: FLOAT_NUMBER;
+VARIABLE: 'variable';
 
 // marks
 
@@ -221,6 +207,23 @@ Arror: '->';
 Tilde: '~';
 
 Range: '..';
+
+// literal
+
+StringLiteral: SHORT_STRING_LITERAL | LONG_STRING_LITERAL;
+
+BoolLiteral: TRUE | FALSE;
+
+IntegerLiteral: INTEGER;
+
+FloatPointLiteral: FLOAT_NUMBER;
+
+// identifiers
+
+LexerRuleName: UPPERCASE (NONDIGIT | DIGIT)*;
+
+ParserRuleName: LOWERCASE (NONDIGIT | DIGIT)*;
+
 
 Whitespace: [ \t]+ -> skip;
 

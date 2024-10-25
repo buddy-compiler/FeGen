@@ -183,6 +183,7 @@ statement
     | ifStmt
     | forStmt
     | returnStmt Semi
+    | variableDeclStmt Semi
     ;
 
 assignStmt
@@ -215,6 +216,10 @@ forStmt
 
 returnStmt
     : RETURN expression
+    ;
+
+variableDeclStmt
+    : identifier IS VARIABLE
     ;
 
 // ======== expression ======== //
