@@ -433,12 +433,38 @@ class VisitorBuilder(Builder):
             body=ctcCond
         )
 
-    def createForStmt(self, iterating_var: str, iterable: str, for_body: Callable[[None], None]):
+    def createForStmt(self, iterating_var: str, iterable: str, for_body: Callable[[None], None], usingVariables: List[str]):
+        foropName = "forop"
+        usingVarStr = ", ".join(usingVariables)
+        usingVarCnt = len(usingVariables)
         # iterable is a runtime variable
+
         def variableIterable():
-            self.writeNewLine("affine.forOp({})".format(iterable))
-            self.writeNewLine("# do something to set ip, loc")
-            for_body()
+            def forbodyContent():
+                self.writeNewLine("{} = {}.iterVar".format(
+                    iterating_var, foropName))
+                if usingVarCnt > 1:
+                    self.writeNewLine(
+                        "{} = {}.iterArgs".format(usingVarStr, foropName))
+                elif usingVarCnt == 1:
+                    self.writeNewLine("{} = {}.iterArgs[0]".format(
+                        usingVariables[0], foropName))
+                for_body()
+                self.writeNewLine(
+                    "{}.yieldVar([{}])".format(foropName, usingVarStr))
+
+            self.writeNewLine("{} = ForStmt({}, [{}])".format(
+                foropName, iterable, usingVarStr))
+            self.createStatementBlock(
+                head="with {}.body".format(foropName),
+                body=forbodyContent,
+            )
+            if usingVarCnt > 1:
+                self.writeNewLine(
+                    "{} = {}.results".format(usingVarStr, foropName))
+            elif usingVarCnt == 1:
+                self.writeNewLine("{} = {}.results[0]".format(
+                    usingVariables[0], foropName))
 
         def ctcIterable():
             self.createStatementBlock(

@@ -41,6 +41,8 @@ class FeGenStmtBlockVisitor(FeGenParserVisitor):
             yieldsOfFor = FeGenStmtBlockVisitor.yieldOf(ctx.statementBlock())
             yieldsOfFor.append(iterVar)
             return list(set(yieldsOfFor))
+        else:
+            return []
 
     def visitActionAlt(self, ctx: FeGenParser.ActionAltContext):
         def visitBody(prod: RuleProd):
@@ -72,11 +74,6 @@ class FeGenStmtBlockVisitor(FeGenParserVisitor):
         self.visitorBuilder.writeNewLine("{} = Value.create(".format(varName))
         body()
         self.visitorBuilder.write(")")
-        # self.visitorBuilder.createStatementBlock(
-        #     head="{} = Value.create(".format(varName),
-        #     body=body,
-        #     tail=")"
-        # )
         self.symbolTable.append(Variable(varName))
 
     def visitIfStmt(self, ctx: FeGenParser.IfStmtContext):
@@ -100,8 +97,9 @@ class FeGenStmtBlockVisitor(FeGenParserVisitor):
         iterVar = ctx.identifier().getText()
         iterable = ctx.expression().getText()
         def forBody(): self.visit(ctx.statementBlock())
+        usingVariable = FeGenStmtBlockVisitor.yieldOf(ctx)
         self.visitorBuilder.createForStmt(
-            iterVar, iterable, forBody
+            iterVar, iterable, forBody, usingVariable
         )
 
     def visitReturnStmt(self, ctx: FeGenParser.ReturnStmtContext):

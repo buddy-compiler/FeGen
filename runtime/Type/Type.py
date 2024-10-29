@@ -1,6 +1,6 @@
 from typing import Dict, Callable, Tuple
 from typing import Type as CLS
-from mlir.ir import IntegerType
+from mlir import ir
 
 
 class Type:
@@ -45,12 +45,33 @@ class Type:
     BOOL_MAP: Dict[CLS, Tuple[Callable, Callable]] = {}
 
     def __init__(self) -> None:
-        pass
+        self.mlirType = None
 
-    @property
-    def mlirType(self):
-        # TODO
-        return IntegerType.get_signless(32)
+    def create(mlirType) -> 'Type':
+        """
+        Get Type by mlir type.
+        """
+        from .Integer import Integer
+        from .ListType import ListType
+
+        if isinstance(mlirType, ir.IntegerType):
+            ty = Integer()
+            ty.mlirType = mlirType
+            ty.size = mlirType.width
+            return ty
+        elif isinstance(mlirType, ir.MemRefType):
+            elemTy = Type.create(mlirType.element_type)
+            ty = ListType(elemTy)
+            ty.mlirType = mlirType
+            return ty
+        else:
+            raise ValueError("unknow mlirType: " + str(mlirType))
 
     def createMLIRConstant(self, constant):
+        raise NotImplementedError()
+
+    def _materialize(self, content):
+        """
+            infer mlir type according to content, content should be python value.
+        """
         raise NotImplementedError()

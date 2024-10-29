@@ -13,11 +13,8 @@ def addInteger(lhs: Value, rhs: Value):
         rhs = Value.convertToVariable(rhs)
 
     res = arith.AddIOp(lhs.content, rhs.content)
-    return Value(res, Integer(), True)
-
-
-class Integer(Type):
-    pass
+    resTy = Type.create(res.result.type)
+    return Value(res, resTy, True)
 
 
 class Integer(Type):
@@ -27,12 +24,11 @@ class Integer(Type):
         self.size = size
         super().__init__()
 
-    @property
-    def mlirType(self):
-        return ir.IntegerType.get_signless(self.size)
-
     def createMLIRConstant(self, constant):
         return arith.ConstantOp(self.mlirType, constant)
+
+    def _materialize(self, content):
+        self.mlirType = ir.IntegerType.get_signless(self.size)
 
 
 Integer.ADD_MAP = {

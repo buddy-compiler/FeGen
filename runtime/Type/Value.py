@@ -5,15 +5,28 @@ from mlir.dialects import arith
 
 class Value:
     def create(content, valuetype: Type = None) -> 'Value':
-        if valuetype is None:
-            from . import Integer
+        from .Integer import Integer
+        from .ListType import ListType
+
+        def inferType(content) -> Type:
             # TODO: infer type according to content
-            valuetype = Integer()
+            if isinstance(content, int):
+                valuetype = Integer()
+            elif isinstance(content, list):
+                element = content[0]
+                elementType = inferType(element)
+                elementType._materialize(element)
+                valuetype = ListType(elementType)
+
+            return valuetype
+
         # content is another value or expression consist of other values
         if isinstance(content, Value):
             # TODO: do some type transform
             pass
         else:
+            if valuetype is None:
+                valuetype = inferType(content)
             return Value(content, valuetype)
 
     def convertToVariable(notVariable: 'Value') -> 'Value':
@@ -30,7 +43,7 @@ class Value:
         if self.isVariable:
             return
         self.isVariable = True
-        # TODO: generate mlir op
+        # generate mlir constant
         self.content = self.valuetype.createMLIRConstant(self.content)
 
     @property
@@ -57,7 +70,7 @@ class Value:
 
     def __bool__(self):
         if self.isVariable:
-            # TODO: turn content to bool mlir value
+            # TODO: turn content to i1 mlir value
             pass
         else:
             return bool(self.content)
