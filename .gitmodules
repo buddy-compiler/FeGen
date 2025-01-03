@@ -1,0 +1,7 @@
+[submodule "thirdparty/pybind11"]
+	path = thirdparty/pybind11
+	url = git@github.com:pybind/pybind11.git
+	branch = v2.13
+[submodule "thirdparty/llvm"]
+	path = thirdparty/llvm
+	url = git@github.com:llvm/llvm-project.git
