@@ -29,6 +29,8 @@
 // #include "mlir/IR/BuiltinAttributes.h"
 // #include "mlir/IR/BuiltinOps.h"
 // #include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "cores/ContextManagerImpl.h"
+#include "mlir-c/IR.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
@@ -54,12 +56,31 @@
 #include <cstddef>
 #include <cstdint>
 
-using namespace mlir;
 namespace fegen {
-class Type {};
-class IntegerTypeImpl : public Type {
+class TypeImpl {
 public:
-  Value createConstant(int64_t value);
+  virtual ~TypeImpl() = default;
+  TypeImpl(mlir::Type mlirType) : mlirType(mlirType){};
+  TypeImpl(const TypeImpl &) = default;
+  void dump();
+
+protected:
+  mlir::Type mlirType;
+};
+
+class IntegerTypeImpl : public TypeImpl {
+public:
+  mlir::Value createConstant(int64_t value);
+  IntegerTypeImpl(int width);
+
+private:
+  int width;
+};
+
+class FloatTypeImpl : public TypeImpl {
+public:
+  mlir::Value createConstant(double value);
+  FloatTypeImpl(int width);
 
 private:
   int width;

@@ -3,3 +3,5 @@ __pycache__/
 .antlr/
 build/
 .cache/
+*.egg-info/
+dist/

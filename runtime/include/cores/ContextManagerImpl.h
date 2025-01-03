@@ -101,18 +101,23 @@
 #include <mutex>
 
 namespace fegen {
-class ContextManager {
+class ContextManagerImpl {
 public:
-  static std::shared_ptr<ContextManager> get();
-  static mlir::MLIRContext *getContext();
+  static std::shared_ptr<ContextManagerImpl> get();
+  static mlir::MLIRContext &context();
+  static mlir::OpBuilder &builder();
+  static mlir::ModuleOp &theModule();
+  static void dump();
+  ~ContextManagerImpl() = default;
 
 private:
-  mlir::MLIRContext *context;
-  mlir::OpBuilder *builder;
-  mlir::ModuleOp *theModule;
-  ContextManager();
-~ContextManager();
-  static std::shared_ptr<ContextManager> manager;
+  mlir::MLIRContext &_context;
+  mlir::OpBuilder &_builder;
+  mlir::ModuleOp &_theModule;
+  // load dialect and set insert point.
+  void initialize();
+  ContextManagerImpl(mlir::MLIRContext &, mlir::OpBuilder &, mlir::ModuleOp &);
+  static std::shared_ptr<ContextManagerImpl> manager;
   static std::once_flag flag;
 };
 

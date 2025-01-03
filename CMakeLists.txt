@@ -64,29 +64,11 @@ include_directories(${MLIR_INCLUDE_DIRS})
 
 
 #-------------------------------------------------------------------------------
-# FeGen configuration
-#-------------------------------------------------------------------------------
-
-set(FeGen_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-set(FeGen_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR})
-set(FeGen_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/bin)
-set(FeGen_LIBRARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/lib)
-set(FeGen_EXAMPLES_DIR ${FeGen_SOURCE_DIR}/examples)
-
-set(EXECUTABLE_OUTPUT_PATH ${FeGen_BINARY_DIR})
-set(LIBRARY_OUTPUT_DIRECTORY ${FeGen_LIBRARY_DIR})
-
-# # Add FeGen files to the include path
-include_directories(${PROJECT_SOURCE_DIR}/runtime/include)
-
-
-
-#-------------------------------------------------------------------------------
 # Initialize Python packages
 #-------------------------------------------------------------------------------
 
-message(STATUS "Using Python3Config.cmake in: ${Python3_DIR}")
 find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter Development)
+message(STATUS "Using Python3Config.cmake in: ${Python3_DIR}")
 message(STATUS "Python3_EXECUTABLE: ${Python3_EXECUTABLE}")
 message(STATUS "Python3_INCLUDE_DIRS: ${Python3_INCLUDE_DIRS}")
 message(STATUS "Python3_LIBRARIES: ${Python3_LIBRARIES}")
@@ -97,5 +79,21 @@ add_subdirectory(thirdparty/pybind11)
 # set(PYTHON_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/python)
 
 include_directories(${Python3_INCLUDE_DIRS})
+
+
+#-------------------------------------------------------------------------------
+# FeGen configuration
+#-------------------------------------------------------------------------------
+# Add FeGen files to the include path
+include_directories(${PROJECT_SOURCE_DIR}/runtime/include)
+
+set(FeGen_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+set(FeGen_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR})
+set(FeGen_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/bin)
+set(FeGen_LIBRARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/lib)
+set(FeGen_EXAMPLES_DIR ${FeGen_SOURCE_DIR}/examples)
+
+set(EXECUTABLE_OUTPUT_PATH ${FeGen_BINARY_DIR})
+set(LIBRARY_OUTPUT_PATH ${FeGen_LIBRARY_DIR})
 
 add_subdirectory(runtime)
