@@ -1,1 +1,1 @@
-recursive-include python/FeGen *.so 
+recursive-include python/FeGen/runtime *.so 

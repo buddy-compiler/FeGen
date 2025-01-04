@@ -1,24 +1,53 @@
-# FeGen
+# Prepare
+
+1. clone submodules
+```bash
+$ git submodule update --init
+```
+
+2. build mlir
+```bash
+$ cd thirdparty/llvm
+$ cmake -G Ninja -Sllvm -Bbuild \
+    -DLLVM_ENABLE_PROJECTS="mlir" \
+    -DLLVM_ENABLE_ASSERTIONS=ON \
+    -DLLVM_ENABLE_RTTI=ON \
+    -DCMAKE_BUILD_TYPE=RELEASE
+$ cd build && ninja
+```
+
+# Build and Install FeGen
 
 1. install python antlr tools
 ```bash
+$ conda create -n fegen python=3.10.14
+$ conda activate fegen
 $ pip install -r requirements.txt
 ```
 
-2. generate files
-
+2. build C++ files
 ```bash
-$ cd grammar
-$ chmod +x ./generate.sh
-$ ./generate.sh
+$ cmake -G Ninja -Sllvm -Bbuild \
+    -DLLVM_DIR=$(pwd)/thirdparty/llvm/build/lib/cmake/llvm \
+    -DMLIR_DIR=$(pwd)/thirdparty/llvm/build/lib/cmake/mlir \
+    -DPython3_EXECUTABLE=$(which python) \
+    -DLLVM_ENABLE_ASSERTIONS=ON 
 ```
 
-to clean the generated, use the following cmds:
+3. generate files
 
 ```bash
-$ ./generate.sh clean
+$ bash script/gen_grammar.sh
 ```
 
+4. build dist
+
+```bash
+$ pip python setup.py bdist_wheel
+```
+# How to use : TODO
+
+<!-- 
 3. run Driver.py
 
 ```bash
@@ -28,4 +57,4 @@ $ python ./Driver.py
 
 `file_path` in `Driver.py` can be one of:
 * `./example/for.fegen`
-* `./example/test.fegen`
+* `./example/test.fegen` -->

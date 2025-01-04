@@ -1,4 +1,6 @@
 from setuptools import setup, find_packages
+from setuptools.command.build_ext import build_ext
+import subprocess
 
 with open("requirements.txt", "r") as f:
     requirements = f.read().splitlines()
