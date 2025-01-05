@@ -1,5 +1,6 @@
-from grammar import *
-from visitor import FeGenRuleVisitor, FeGenStmtBlockVisitor, Context, VisitorBuilder
+from FeGen import grammar
+from FeGen.grammar import FeGenLexer, FeGenParser, FeGenParserVisitor
+from FeGen.visitor import *
 import sys
 from antlr4 import *
 

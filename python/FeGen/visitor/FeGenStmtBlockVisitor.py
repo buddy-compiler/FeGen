@@ -1,5 +1,5 @@
-from grammar import FeGenParserVisitor
-from grammar.FeGenParser import FeGenParser
+from FeGen.grammar import FeGenParserVisitor
+from FeGen.grammar import FeGenParser
 from .Context import Context, RuleBuilder, VisitorBuilder
 from .Rule import *
 from .Variable import Variable

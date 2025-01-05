@@ -43,7 +43,7 @@ $ bash script/gen_grammar.sh
 4. build dist
 
 ```bash
-$ pip python setup.py bdist_wheel
+$ python setup.py bdist_wheel
 ```
 # How to use : TODO
 
