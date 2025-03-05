@@ -1,17 +1,17 @@
 def attr_grammar(clazz):
-    pass
+    return clazz
 
 
 def parser(func):
-    pass
+    return func
 
 
 def lexer(func):
-    pass
+    return func
 
 
 def skip(func):
-    pass
+    return func
 
 
 def char_set(arg):
