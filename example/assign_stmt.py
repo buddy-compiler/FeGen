@@ -77,7 +77,19 @@ table : dict = {}
         [syn v: Value]
         : prim_expr Add add_expr {v = arith.addi($prim_expr.v, $add_expr.v)}
         ;
-        
+    
+    DEF: 'def';
+    
+    RETURN: 'return';
+    
+    LB: '{';
+    
+    RB: '}';
+    
+    LP: '(';
+    
+    RP: ')';
+    
     Add: '+';
     
     Assign: '=';

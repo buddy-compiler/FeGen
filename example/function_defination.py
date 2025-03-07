@@ -1,4 +1,4 @@
-from FeGen import *
+from typing import List, Dict, Tuple
 from xdsl.dialects.builtin import IntegerType, SSAValue, Region, Block, IntegerAttr
 from xdsl.context import Context
 from xdsl.printer import Printer
@@ -6,7 +6,7 @@ import xdsl.dialects.arith as arith
 import xdsl.dialects.builtin as builtin
 import xdsl.dialects.memref as memref
 import xdsl.dialects.func as func
-from typing import List, Dict, Tuple
+from FeGen import *
 
 """
 function_defination
@@ -201,7 +201,7 @@ class MyGrammar(FeGenGrammar):
             }
             ;
         """
-        g = ParserRule()
+        g = newParserRule()
         proto_ty = self.proto_type()
         func_body = self.func_body()
         g.setProduction(concat(proto_ty, func_body))
@@ -232,7 +232,7 @@ class MyGrammar(FeGenGrammar):
             }
             ;
         """
-        g = ParserRule()
+        g = newParserRule()
         func_name = self.func_name()
         params =  self.func_params()
         func_return_ty = self.func_return_ty() 
@@ -255,7 +255,7 @@ class MyGrammar(FeGenGrammar):
             : Identifier {return $Identifier.text}
             ;
         """
-        g = ParserRule()
+        g = newParserRule()
         iden = self.Identifier()
         g.setProduction(iden)
         g.new_attr("name", str, iden.text())
@@ -269,7 +269,7 @@ class MyGrammar(FeGenGrammar):
             | {ps = []}
             ;
         """
-        g = ParserRule()
+        g = newParserRule()
         ps = g.new_attr("ps", List[Tuple[str, builtin.TypeAttribute]])
         def alt1():
             params = self.params()
@@ -278,7 +278,7 @@ class MyGrammar(FeGenGrammar):
         
         def alt2():
             ps.set([])
-            return ParserRule()
+            return newParserRule()
         
         g.setProduction(alternate(alt1, alt2))
         return g
@@ -293,7 +293,7 @@ class MyGrammar(FeGenGrammar):
             | {ty = None}
             ;
         """
-        g = ParserRule()
+        g = newParserRule()
         ty = g.new_attr("ty", builtin.TypeAttribute)
             
         def alt1():
@@ -303,7 +303,7 @@ class MyGrammar(FeGenGrammar):
         
         def alt2():
             ty.set(None)
-            return ParserRule()
+            return newParserRule()
         
         g.setProduction(alternate(alt1, alt2))
         return g
@@ -316,7 +316,7 @@ class MyGrammar(FeGenGrammar):
             : LB statement* RB {stmts = $statement.stmt}
             ;
         """
-        g = ParserRule()
+        g = newParserRule()
         g_statement = self.statement()
         g_statements = zero_or_more(g_statement)
         g.setProduction(concat(self.LB(), g_statements, self.RB()))
@@ -337,7 +337,7 @@ class MyGrammar(FeGenGrammar):
             | return_stmt {stmt = $return_stmt.stmt}
             ;
         """
-        g = ParserRule()
+        g = newParserRule()
         stmt = g.new_attr("stmt", SSAValue)
         def alt1():
             g_assign_stmt = self.assign_stmt()
@@ -368,7 +368,7 @@ class MyGrammar(FeGenGrammar):
         # grammar define
         var_access = self.variable_access()
         expr = self.expression()
-        g = ParserRule()
+        g = newParserRule()
         g.setProduction(concat(var_access, self.Assign(), expr))
         
         # attribute define
@@ -391,7 +391,7 @@ class MyGrammar(FeGenGrammar):
             ;
         """
         name_acc = self.name_access()
-        g = ParserRule(name_acc)
+        g = newParserRule(name_acc)
         alloca = name_acc.get_attr("ssavalue")
         alloca_ = g.new_attr("ssavalue", SSAValue)
         alloca_.set(alloca)
@@ -414,7 +414,7 @@ class MyGrammar(FeGenGrammar):
             ;
         """
         id = self.Identifier()
-        g = ParserRule(id)
+        g = newParserRule(id)
         name = id.text()
         g.new_attr("name", SSAValue).set(name)
         g.new_attr("ssavalue", SSAValue).set(table[name] if name in table else None)
@@ -430,7 +430,7 @@ class MyGrammar(FeGenGrammar):
             ;    
             
         """
-        g = ParserRule()
+        g = newParserRule()
         v = g.new_attr("v", SSAValue)
         def alt1():
             expr = self.prim_expr()
@@ -459,7 +459,7 @@ class MyGrammar(FeGenGrammar):
             | Number {v = arith.constantOp(int($Number.text), IntegerType.get(32))}
             ;
         """
-        g = ParserRule()
+        g = newParserRule()
         v = g.new_attr("v", SSAValue)
         def alt1():
             var_acc = self.variable_access()
@@ -488,7 +488,7 @@ class MyGrammar(FeGenGrammar):
             ;
 
         """
-        g = ParserRule()
+        g = newParserRule()
         v = g.new_attr("v", SSAValue)
         prim = self.prim_expr()
         add = self.add_expr()
@@ -512,7 +512,7 @@ class MyGrammar(FeGenGrammar):
             }
             ;
         """
-        g = ParserRule()
+        g = newParserRule()
         g_var_access = self.variable_access()
         g.setProduction(concat(self.RETURN(), g_var_access))
         
@@ -528,7 +528,7 @@ class MyGrammar(FeGenGrammar):
         """
             Add: '+';
         """
-        return TerminalRule("+")
+        return newTerminalRule("+")
     
     @lexer
     def Number(self):
@@ -537,14 +537,14 @@ class MyGrammar(FeGenGrammar):
         """
         no_zero = char_set("1-9")
         all_number = char_set("0-9")
-        return TerminalRule(alternate(lambda: all_number, lambda: concat(no_zero, zero_or_more(all_number))))
+        return newTerminalRule(alternate(lambda: all_number, lambda: concat(no_zero, zero_or_more(all_number))))
     
     @lexer
     def Dot(self):
         """
             Dot: '.';
         """
-        return TerminalRule(".")
+        return newTerminalRule(".")
     
     @lexer
     def Identifier(self):
@@ -553,43 +553,43 @@ class MyGrammar(FeGenGrammar):
         """
         noDigit = char_set("a-zA-Z")
         allcase = char_set("a-zA-Z0-9")
-        # return TerminalRule(concat(noDigit, zero_or_more(allcase)))
-        return TerminalRule(noDigit, zero_or_more(allcase))
+        # return newTerminalRule(concat(noDigit, zero_or_more(allcase)))
+        return newTerminalRule(noDigit, zero_or_more(allcase))
 
     @lexer
     def Assign(self):
         """
             Assign: '=';
         """
-        return TerminalRule("=")
+        return newTerminalRule("=")
     
     @lexer
     def RETURN(self):
-        return TerminalRule("return")
+        return newTerminalRule("return")
     
     @lexer
     def DEF(self):
-        return TerminalRule("def")
+        return newTerminalRule("def")
     
     @lexer
     def LP(self):
-        return TerminalRule("(")
+        return newTerminalRule("(")
     
     @lexer
     def RP(self):
-        return TerminalRule(")")
+        return newTerminalRule(")")
     
     @lexer
     def LB(self):
-        return TerminalRule("{")
+        return newTerminalRule("{")
     
     @lexer
     def RB(self):
-        return TerminalRule("}")
+        return newTerminalRule("}")
     
     @skip
     def skip(self):
-        return TerminalRule(char_set("\n\t "))
+        return newTerminalRule(char_set("\n\t "))
     
 if __name__ == "__main__":
     context = Context()
@@ -603,8 +603,8 @@ if __name__ == "__main__":
         }
     """
     grammar = MyGrammar()
-    mylexer = grammar.lexer
-    myparser = grammar.parser
+    mylexer = grammar.lexer()
+    myparser = grammar.parser()
     p = myparser(mylexer(code))
     tree = p.function_defination()
     myfunc = tree.get_attr("func_decl")

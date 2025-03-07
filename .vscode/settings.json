@@ -1,4 +1,4 @@
 {
     "python.REPL.enableREPLSmartSend": false,
-    "python.analysis.extraPaths": ["/home/chh/gitprojects/xdsl"]
+    "python.analysis.extraPaths": ["/home/chh/gitprojects/xdsl", "/home/chh/gitprojects/test_xdsl/python"]
 }
