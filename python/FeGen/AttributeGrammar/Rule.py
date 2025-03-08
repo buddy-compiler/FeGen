@@ -1,19 +1,27 @@
 from typing import Type, List, Dict, Literal, Callable, Tuple, Any
-from types import FunctionType
+from types import FunctionType, MethodType
 import inspect
 import copy
 import ast as py_ast
 import astunparse
-from .RuleDefinationTransformer import LexLexTransformer, ParseParseTransformer, LexSemaTransformer, ParseSemaTransformer
+from .RuleDefinationTransformer import LexLexTransformer, ParseParseTransformer, LexSemaTransformer, ParseSemaTransformer, ExecutionTimeError
+import logging
+
 
 class FeGenGrammar:
     """
         base class of all grammar class
     """
     def lexer(self) -> str:
+        """
+        see defination in attr_grammar.lexer
+        """
         ...
     
     def parser(self) -> str:
+        """
+        see defination in attr_grammar.parser
+        """
         ...
 
 
@@ -26,6 +34,11 @@ class ExecutionEngine:
     """
     WHEN: Literal['lex', 'parse', 'sema'] = "lex"
     GRAMMAR_CLS = None
+    # method that decorated by lexer
+    lexerRule : Dict[str, Callable] = {}
+    # method that decorated by parser
+    parserRule : Dict[str, Callable] = {}
+    
     parserRulesParse : Dict[str, Callable] = {}
     parserRulesWhenSema : Dict[str, Callable] = {}
     lexerRulesWhenLex : Dict[str, Callable] = {}
@@ -75,45 +88,8 @@ def lexer(lexer_rule_defination: FunctionType):
     sig = inspect.signature(lexer_rule_defination).parameters
     assert len(sig) == 1 and f"lexer defining function should only have one parameter: self"
     name = lexer_rule_defination.__name__
-    # collect file, line and col
-    lines, start_line = inspect.getsourcelines(lexer_rule_defination)
-    file = inspect.getsourcefile(lexer_rule_defination)
-    source = ''.join(lines)
-    source, col_offset = eliminate_indent(source)
-    source, inc_lineno = eliminate_decorators(source)
-    start_line += inc_lineno
-    
-    parsed: py_ast.AST = py_ast.parse(source=source)
-    print(parsed)
-    anotherParsed = copy.copy(parsed) 
-    
-    # collect env
-    env: Dict[str, Any] = lexer_rule_defination.__globals__.copy()
-    func_freevar_names: List[str] = list(lexer_rule_defination.__code__.co_freevars)
-    func_freevar_cells: List[Any] = [v.cell_contents for v in lexer_rule_defination.__closure__] if lexer_rule_defination.__closure__ else []
-    assert len(func_freevar_names) == len(func_freevar_cells)
-    env.update(dict(zip(func_freevar_names, func_freevar_cells)))
-    
-    # call transformer
-    lexlextrans = LexLexTransformer(
-        file=file, start_lineno=start_line, start_column=col_offset, env=env
-    )
-    lexlexfuncast = lexlextrans.visit(parsed)
-    lexlexfunc = astunparse.unparse(lexlexfuncast)
-    ExecutionEngine.lexerRulesWhenLex[name] = lexlexfunc
-
-    lexsematrans = LexSemaTransformer(file=file, start_lineno=start_line, start_column=col_offset, env=env)
-    lexsemafuncast = lexsematrans.visit(anotherParsed)
-    lexsemafunc = astunparse.unparse(lexsemafuncast)
-    ExecutionEngine.lexerRulesWhenSema[name] = lexsemafunc
-    
-    def warpper(*args, **kwargs):
-        if ExecutionEngine.WHEN in ['lex', 'parse']:
-            return lexlexfunc(*args, **kwargs)
-        else:
-            return lexsemafunc(*args, **kwargs)
-    
-    return warpper
+    ExecutionEngine.lexerRule[name] = lexer_rule_defination
+    return lexer_rule_defination
 
 
 def skip(skip_rule_defination):
@@ -130,10 +106,72 @@ def attr_grammar(cls: Type):
     ExecutionEngine.GRAMMAR_CLS = cls
     assert issubclass(cls, FeGenGrammar) and f"class {cls.__name__} is expected to be a subclass of FeGenGrammar"
     
+    def update_rules(self):
+        # declare temporary rules used in fake execution for rules generating
+        temp_lexer = lambda self: TerminalRule()
+        temp_parser = lambda self: ParserRule()
+        for name in ExecutionEngine.lexerRule.keys():
+            setattr(self, name, MethodType(temp_lexer, self))
+        for name in ExecutionEngine.parserRule.keys():
+            setattr(self, name, MethodType(temp_parser, self))
+    
     def lexer(self):
         """return lexer of attribute grammar
         """
+        
+        # process source code and generate code for lexer
         ExecutionEngine.WHEN = "lex"
+        for name, lexer_rule_defination in ExecutionEngine.lexerRule.items():
+            # collect file, line and col
+            lines, start_line = inspect.getsourcelines(lexer_rule_defination)
+            file = inspect.getsourcefile(lexer_rule_defination)
+            source = ''.join(lines)
+            source, col_offset = eliminate_indent(source)
+            source, inc_lineno = eliminate_decorators(source)
+            start_line += inc_lineno
+            
+            # get ast of source code
+            parsed: py_ast.AST = py_ast.parse(source=source)
+            anotherParsed = copy.copy(parsed) 
+            
+            # collect env
+            env: Dict[str, Any] = lexer_rule_defination.__globals__.copy()
+            func_freevar_names: List[str] = list(lexer_rule_defination.__code__.co_freevars)
+            func_freevar_cells: List[Any] = [v.cell_contents for v in lexer_rule_defination.__closure__] if lexer_rule_defination.__closure__ else []
+            assert len(func_freevar_names) == len(func_freevar_cells)
+            env.update(dict(zip(func_freevar_names, func_freevar_cells)))
+            env.update({"self": self})
+            update_rules(self)
+            
+            # call transformer
+            lexlextrans = LexLexTransformer(
+                when=ExecutionEngine.WHEN, func_name=name, file=file, start_lineno=start_line, start_column=col_offset, env=env
+            )
+            lexlexfuncast = lexlextrans.visit(parsed)
+            lexsemafunc_code_str = astunparse.unparse(lexlexfuncast)
+            lexsemafunc_code = compile(lexsemafunc_code_str, f"lexer_rule_{name}", mode = "exec")
+            exec(lexsemafunc_code, env)
+            lex_func: FunctionType = env[name]
+            
+            # set name for return of lex_func
+            def lex_func_decorator(lex_func: FunctionType, name: str):
+                def warpper(*args, **kwargs):
+                    g = lex_func(*args, **kwargs)
+                    assert isinstance(g, TerminalRule) 
+                    g.name = name
+                    return g
+                return warpper
+            
+            # store lex function to ExecutionEngine
+            decorated_lex_func = lex_func_decorator(lex_func, name)
+            ExecutionEngine.lexerRulesWhenLex[name] = decorated_lex_func
+            logging.debug(f"Code generated for lex function {name}: " + lexsemafunc_code_str)
+            
+        # update lex functions of self
+        for name, lex_func in ExecutionEngine.lexerRulesWhenLex.items():
+            setattr(self, name, MethodType(lex_func, self))
+        
+        # generate lex rules
         for name, lexDef in ExecutionEngine.lexerRulesWhenLex.items():
             lexRule = lexDef(self)
             assert isinstance(lexRule, TerminalRule)
@@ -152,6 +190,7 @@ def attr_grammar(cls: Type):
 
 
 
+
 class ExecutableWarpper:
     def __init__(self, executable: FunctionType, whenexecute: Literal['parse', 'sema']):
         self.executable = executable
@@ -160,7 +199,8 @@ class ExecutableWarpper:
     def __call__(self, *args, **kwds):
         if ExecutionEngine.WHEN == self.whenexecute:
             return self.executable(*args, **kwds)
-
+        else:
+            raise ExecutionTimeError(self.executable, f"Function execute in wrong time, expected in {self.whenexecute} time, but now it is time to {ExecutionEngine.WHEN}")
 
 def execute_when(when: Literal['lex', 'parse', 'sema']):
     """mark function to execute at correct time
@@ -310,7 +350,7 @@ def newParserRule() -> ParserRule:
     return ParserRule()
 
 @execute_when("lex")
-def newTerminalRule(prod) -> TerminalRule:
+def newTerminalRule(prod = None) -> TerminalRule:
     return TerminalRule(prod)
     
     
