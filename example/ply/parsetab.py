@@ -6,9 +6,9 @@ _tabversion = '3.10'
 
 _lr_method = 'LALR'
 
-_lr_signature = 'DIVIDE MINUS NUMBER PLUS TIMESexpression : expression PLUS termexpression : expression MINUS termexpression : termterm : term TIMES factorterm : term DIVIDE factorterm : factorfactor : NUMBER'
+_lr_signature = 'DIVIDE MINUS NUMBER PLUS TIMESexpression : expression MINUS termexpression : expression PLUS termexpression : termfactor : NUMBERterm : term DIVIDE factorterm : factorterm : term TIMES factor'
     
-_lr_action_items = {'NUMBER':([0,5,6,7,8,],[4,4,4,4,4,]),'$end':([1,2,3,4,9,10,11,12,],[0,-3,-6,-7,-1,-2,-4,-5,]),'PLUS':([1,2,3,4,9,10,11,12,],[5,-3,-6,-7,-1,-2,-4,-5,]),'MINUS':([1,2,3,4,9,10,11,12,],[6,-3,-6,-7,-1,-2,-4,-5,]),'TIMES':([2,3,4,9,10,11,12,],[7,-6,-7,7,7,-4,-5,]),'DIVIDE':([2,3,4,9,10,11,12,],[8,-6,-7,8,8,-4,-5,]),}
+_lr_action_items = {'NUMBER':([0,5,6,7,8,],[4,4,4,4,4,]),'$end':([1,2,3,4,9,10,11,12,],[0,-3,-6,-4,-1,-2,-5,-7,]),'MINUS':([1,2,3,4,9,10,11,12,],[5,-3,-6,-4,-1,-2,-5,-7,]),'PLUS':([1,2,3,4,9,10,11,12,],[6,-3,-6,-4,-1,-2,-5,-7,]),'DIVIDE':([2,3,4,9,10,11,12,],[7,-6,-4,7,7,-5,-7,]),'TIMES':([2,3,4,9,10,11,12,],[8,-6,-4,8,8,-5,-7,]),}
 
 _lr_action = {}
 for _k, _v in _lr_action_items.items():
@@ -27,11 +27,11 @@ for _k, _v in _lr_goto_items.items():
 del _lr_goto_items
 _lr_productions = [
   ("S' -> expression","S'",1,None,None,None),
-  ('expression -> expression PLUS term','expression',3,'p_expression_plus','expr.py',33),
-  ('expression -> expression MINUS term','expression',3,'p_expression_minus','expr.py',38),
-  ('expression -> term','expression',1,'p_expression_term','expr.py',43),
-  ('term -> term TIMES factor','term',3,'p_term_times','expr.py',48),
-  ('term -> term DIVIDE factor','term',3,'p_term_divide','expr.py',53),
-  ('term -> factor','term',1,'p_term_factor','expr.py',58),
-  ('factor -> NUMBER','factor',1,'p_factor_number','expr.py',63),
+  ('expression -> expression MINUS term','expression',3,'p_p_expression_minus','generate_ast.py',35),
+  ('expression -> expression PLUS term','expression',3,'p_p_expression_plus','generate_ast.py',35),
+  ('expression -> term','expression',1,'p_p_expression_term','generate_ast.py',35),
+  ('factor -> NUMBER','factor',1,'p_p_factor_number','generate_ast.py',35),
+  ('term -> term DIVIDE factor','term',3,'p_p_term_divide','generate_ast.py',35),
+  ('term -> factor','term',1,'p_p_term_factor','generate_ast.py',35),
+  ('term -> term TIMES factor','term',3,'p_p_term_times','generate_ast.py',35),
 ]

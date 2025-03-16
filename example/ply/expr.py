@@ -32,6 +32,9 @@ lexer = lex.lex()
 def p_expression_plus(p):
     'expression : expression PLUS term'
     p[0] = p[1] + p[3]
+    
+    for pi in p:
+        print(pi)
     print("p_expression_plus")
 
 def p_expression_minus(p):
@@ -70,12 +73,15 @@ def p_error(p):
 parser = yacc.yacc()
 
 # 测试
-while True:
-    try:
-        s = input('calc > ')
-    except EOFError:
-        break
-    if not s:
-        continue
-    result = parser.parse(s)
-    print(result)
+# while True:
+#     try:
+#         s = input('calc > ')
+#     except EOFError:
+#         break
+#     if not s:
+#         continue
+#     result = parser.parse(s, lexer)
+#     print(result)
+
+result = parser.parse("1 + 2 + 3", lexer)
+print(result)

@@ -7,7 +7,7 @@ import xdsl.dialects.memref as memref
 import xdsl.dialects.func as func
 
 from FeGen import *
-
+from FeGen.AttributeGrammar import *
 
 
 
@@ -117,7 +117,7 @@ class MyGrammar(FeGenGrammar):
             }
             ;
         """
-        g = ParserRule()
+        g = newParserRule()
         stmts = one_or_more(self.assign_stmt())
         g.production = stmts
         ops = []
@@ -146,7 +146,7 @@ class MyGrammar(FeGenGrammar):
         # grammar define
         var_access = self.variable_access()
         expr = self.expression()
-        g = ParserRule()
+        g = newParserRule()
         g.production = concat(var_access, self.Assign(), expr)
         
         # attribute define
@@ -173,7 +173,7 @@ class MyGrammar(FeGenGrammar):
             ;
         """
         name_acc = self.name_access()
-        g = ParserRule(name_acc)
+        g = newParserRule(name_acc)
         alloca = name_acc.get_attr("alloca")
         alloca_ = g.new_attr("alloca", SSAValue)
         alloca_.set(alloca)
@@ -196,7 +196,7 @@ class MyGrammar(FeGenGrammar):
             ;
         """
         id = self.Identifier()
-        g = ParserRule(id)
+        g = newParserRule(id)
         name = id.text()
         g.new_attr("alloca", SSAValue).set(table.find(name))
         g.new_attr("name", SSAValue).set(name)
@@ -211,7 +211,7 @@ class MyGrammar(FeGenGrammar):
                 | add_expr {v = $add_expr.v}
                 ;
         """
-        g = ParserRule()
+        g = newParserRule()
         v = g.new_attr("v", SSAValue)
         def alt1():
             expr = self.prim_expr()
@@ -235,7 +235,7 @@ class MyGrammar(FeGenGrammar):
             | Number {v = arith.constantOp(int($Number.text), IntegerType.get(32))}
             ;
         """
-        g = ParserRule()
+        g = newParserRule()
         v = g.new_attr("v", SSAValue)
         def alt1():
             var_acc = self.variable_access()
@@ -261,7 +261,7 @@ class MyGrammar(FeGenGrammar):
             : prim_expr Add add_expr {v = arith.addi($prim_expr.v, $add_expr.v)}
             ;
         """
-        g = ParserRule()
+        g = newParserRule()
         v = g.new_attr("v", SSAValue)
         prim = self.prim_expr()
         add = self.add_expr()

@@ -8,6 +8,7 @@ from .RuleDefinationTransformer import LexLexTransformer, ParseParseTransformer,
 import logging
 
 
+
 class FeGenGrammar:
     """
         base class of all grammar class
@@ -179,7 +180,7 @@ def attr_grammar(cls: Type):
             gen = CodeGen()
             res = gen(prod)
             print(f"{name}: {res}")
-
+            # TODO
     
     def parser(self):
         print("parser")
@@ -211,8 +212,7 @@ def execute_when(when: Literal['lex', 'parse', 'sema']):
         return f
     return decorator
 
-
-class char_set(Production):
+class ChatSet(Production):
     """
         char_set("A-Z") --> [A-Z]
     """
@@ -220,8 +220,10 @@ class char_set(Production):
         super().__init__()
         self.charset = charset
 
+def char_set(charset: str):
+    return ChatSet(charset)
 
-class zero_or_more(Production):
+class ZeroOrMore(Production):
     """
         zero_or_more(A) --> A*
     """
@@ -229,8 +231,11 @@ class zero_or_more(Production):
         super().__init__()
         self.rule = rule
 
+def zero_or_more(rule: "Rule"):
+    return ZeroOrMore(rule)
 
-class one_or_more(Production):
+
+class OneOrMore(Production):
     """
         one_or_more(A) --> A+ 
     """
@@ -238,8 +243,11 @@ class one_or_more(Production):
         super().__init__()
         self.rule = rule
 
+def one_or_more(rule: "Rule"):
+    return OneOrMore(rule)
 
-class concat(Production):
+
+class Concat(Production):
     """
         concat(A, B) -->  A B
     """
@@ -247,8 +255,10 @@ class concat(Production):
         super().__init__()
         self.rules : List[Rule] = args
 
+def concat(*args):
+    return Concat(*args)
 
-class alternate(Production):
+class Alternate(Production):
     """
         alternate(A, B) --> A | B
     """
@@ -256,6 +266,9 @@ class alternate(Production):
         super().__init__()
         self.alts : List[FunctionType] = args
 
+
+def alternate(*args):
+    return Alternate(*args)
 
 
 class Attribute:
