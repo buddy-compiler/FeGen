@@ -29,5 +29,5 @@ class CodeGen:
     def visit_str(self, s: str):
         return f"\"{s}\""
 
-    def visit_one_or_more(self, prod: one_or_more):
+    def visit_OneOrMore(self, prod: one_or_more):
         return self.visit(prod.rule) + "*"

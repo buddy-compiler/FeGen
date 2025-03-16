@@ -12,12 +12,83 @@ import logging
 class FeGenGrammar:
     """
         base class of all grammar class
-    """
-    def lexer(self) -> str:
+    """    
+    def __update_rules(self):
+        # declare temporary rules used in fake execution for rules generating
+        temp_lexer = lambda self: TerminalRule()
+        temp_parser = lambda self: ParserRule()
+        for name in ExecutionEngine.lexerRule.keys():
+            setattr(self, name, MethodType(temp_lexer, self))
+        for name in ExecutionEngine.parserRule.keys():
+            setattr(self, name, MethodType(temp_parser, self))
+    
+    def lexer(self):
+        from .ExecuteEngine import CodeGen
+       
+        """return lexer of attribute grammar
         """
-        see defination in attr_grammar.lexer
-        """
-        ...
+        
+        # process source code and generate code for lexer
+        ExecutionEngine.WHEN = "lex"
+        for name, lexer_rule_defination in ExecutionEngine.lexerRule.items():
+            # collect file, line and col
+            lines, start_line = inspect.getsourcelines(lexer_rule_defination)
+            file = inspect.getsourcefile(lexer_rule_defination)
+            source = ''.join(lines)
+            source, col_offset = eliminate_indent(source)
+            source, inc_lineno = eliminate_decorators(source)
+            start_line += inc_lineno
+            
+            # get ast of source code
+            parsed: py_ast.AST = py_ast.parse(source=source)
+            anotherParsed = copy.copy(parsed) 
+            
+            # collect env
+            env: Dict[str, Any] = lexer_rule_defination.__globals__.copy()
+            func_freevar_names: List[str] = list(lexer_rule_defination.__code__.co_freevars)
+            func_freevar_cells: List[Any] = [v.cell_contents for v in lexer_rule_defination.__closure__] if lexer_rule_defination.__closure__ else []
+            assert len(func_freevar_names) == len(func_freevar_cells)
+            env.update(dict(zip(func_freevar_names, func_freevar_cells)))
+            env.update({"self": self})
+            self.__update_rules()
+            
+            # call transformer
+            lexlextrans = LexLexTransformer(
+                when=ExecutionEngine.WHEN, func_name=name, file=file, start_lineno=start_line, start_column=col_offset, env=env
+            )
+            lexlexfuncast = lexlextrans.visit(parsed)
+            lexsemafunc_code_str = astunparse.unparse(lexlexfuncast)
+            lexsemafunc_code = compile(lexsemafunc_code_str, f"lexer_rule_{name}", mode = "exec")
+            exec(lexsemafunc_code, env)
+            lex_func: FunctionType = env[name]
+            
+            # set name for return of lex_func
+            def lex_func_decorator(lex_func: FunctionType, name: str):
+                def warpper(*args, **kwargs):
+                    g = lex_func(*args, **kwargs)
+                    assert isinstance(g, TerminalRule) 
+                    g.name = name
+                    return g
+                return warpper
+            
+            # store lex function to ExecutionEngine
+            decorated_lex_func = lex_func_decorator(lex_func, name)
+            ExecutionEngine.lexerRulesWhenLex[name] = decorated_lex_func
+            logging.debug(f"Code generated for lex function {name}: " + lexsemafunc_code_str)
+            
+        # update lex functions of self
+        for name, lex_func in ExecutionEngine.lexerRulesWhenLex.items():
+            setattr(self, name, MethodType(lex_func, self))
+        
+        # generate lex rules
+        for name, lexDef in ExecutionEngine.lexerRulesWhenLex.items():
+            lexRule = lexDef(self)
+            assert isinstance(lexRule, TerminalRule)
+            prod = lexRule.production
+            gen = CodeGen()
+            res = gen(prod)
+            print(f"{name}: {res}")
+            # TODO
     
     def parser(self) -> str:
         """
@@ -99,97 +170,6 @@ def skip(skip_rule_defination):
         ExecutionEngine.lexerRulesWhenLex[name] = skip_rule_defination
         return skip_rule_defination(*args, **kwargs)
     return warp
-
-
-def attr_grammar(cls: Type):
-    from .ExecuteEngine import CodeGen
-    
-    ExecutionEngine.GRAMMAR_CLS = cls
-    assert issubclass(cls, FeGenGrammar) and f"class {cls.__name__} is expected to be a subclass of FeGenGrammar"
-    
-    def update_rules(self):
-        # declare temporary rules used in fake execution for rules generating
-        temp_lexer = lambda self: TerminalRule()
-        temp_parser = lambda self: ParserRule()
-        for name in ExecutionEngine.lexerRule.keys():
-            setattr(self, name, MethodType(temp_lexer, self))
-        for name in ExecutionEngine.parserRule.keys():
-            setattr(self, name, MethodType(temp_parser, self))
-    
-    def lexer(self):
-        """return lexer of attribute grammar
-        """
-        
-        # process source code and generate code for lexer
-        ExecutionEngine.WHEN = "lex"
-        for name, lexer_rule_defination in ExecutionEngine.lexerRule.items():
-            # collect file, line and col
-            lines, start_line = inspect.getsourcelines(lexer_rule_defination)
-            file = inspect.getsourcefile(lexer_rule_defination)
-            source = ''.join(lines)
-            source, col_offset = eliminate_indent(source)
-            source, inc_lineno = eliminate_decorators(source)
-            start_line += inc_lineno
-            
-            # get ast of source code
-            parsed: py_ast.AST = py_ast.parse(source=source)
-            anotherParsed = copy.copy(parsed) 
-            
-            # collect env
-            env: Dict[str, Any] = lexer_rule_defination.__globals__.copy()
-            func_freevar_names: List[str] = list(lexer_rule_defination.__code__.co_freevars)
-            func_freevar_cells: List[Any] = [v.cell_contents for v in lexer_rule_defination.__closure__] if lexer_rule_defination.__closure__ else []
-            assert len(func_freevar_names) == len(func_freevar_cells)
-            env.update(dict(zip(func_freevar_names, func_freevar_cells)))
-            env.update({"self": self})
-            update_rules(self)
-            
-            # call transformer
-            lexlextrans = LexLexTransformer(
-                when=ExecutionEngine.WHEN, func_name=name, file=file, start_lineno=start_line, start_column=col_offset, env=env
-            )
-            lexlexfuncast = lexlextrans.visit(parsed)
-            lexsemafunc_code_str = astunparse.unparse(lexlexfuncast)
-            lexsemafunc_code = compile(lexsemafunc_code_str, f"lexer_rule_{name}", mode = "exec")
-            exec(lexsemafunc_code, env)
-            lex_func: FunctionType = env[name]
-            
-            # set name for return of lex_func
-            def lex_func_decorator(lex_func: FunctionType, name: str):
-                def warpper(*args, **kwargs):
-                    g = lex_func(*args, **kwargs)
-                    assert isinstance(g, TerminalRule) 
-                    g.name = name
-                    return g
-                return warpper
-            
-            # store lex function to ExecutionEngine
-            decorated_lex_func = lex_func_decorator(lex_func, name)
-            ExecutionEngine.lexerRulesWhenLex[name] = decorated_lex_func
-            logging.debug(f"Code generated for lex function {name}: " + lexsemafunc_code_str)
-            
-        # update lex functions of self
-        for name, lex_func in ExecutionEngine.lexerRulesWhenLex.items():
-            setattr(self, name, MethodType(lex_func, self))
-        
-        # generate lex rules
-        for name, lexDef in ExecutionEngine.lexerRulesWhenLex.items():
-            lexRule = lexDef(self)
-            assert isinstance(lexRule, TerminalRule)
-            prod = lexRule.production
-            gen = CodeGen()
-            res = gen(prod)
-            print(f"{name}: {res}")
-            # TODO
-    
-    def parser(self):
-        print("parser")
-
-    setattr(cls, lexer.__name__, lexer)
-    setattr(cls, parser.__name__, parser)
-    return cls
-
-
 
 
 class ExecutableWarpper:

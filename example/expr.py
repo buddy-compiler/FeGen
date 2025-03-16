@@ -3,7 +3,6 @@ import logging
 
 logging.basicConfig(level=logging.DEBUG)
 
-@attr_grammar
 class MyGrammar(FeGenGrammar):
     def __init__(self):
         pass
