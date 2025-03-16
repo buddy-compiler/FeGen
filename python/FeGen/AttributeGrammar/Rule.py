@@ -6,7 +6,7 @@ import ast as py_ast
 import astunparse
 from .RuleDefinationTransformer import LexLexTransformer, ParseParseTransformer, LexSemaTransformer, ParseSemaTransformer, ExecutionTimeError
 import logging
-
+import sys
 
 
 class FeGenGrammar:
@@ -21,6 +21,24 @@ class FeGenGrammar:
             setattr(self, name, MethodType(temp_lexer, self))
         for name in ExecutionEngine.parserRule.keys():
             setattr(self, name, MethodType(temp_parser, self))
+    
+    def __capture_locals(func: FunctionType, *args, **kwargs):
+        """execute and capture locals of func"""
+        locals_dict = {}
+        original_trace = sys.gettrace()
+        
+        def trace_function(frame, event, arg):
+            if event == 'return' and frame.f_code == func.__code__:
+                locals_dict.update(frame.f_locals)
+            return trace_function
+        
+        sys.settrace(trace_function)
+        try:
+            res = func(*args, **kwargs) # execute
+        finally:
+            sys.settrace(original_trace)  # resume trace function
+        
+        return (res, locals_dict)
     
     def lexer(self):
         from .ExecuteEngine import CodeGen
@@ -62,18 +80,18 @@ class FeGenGrammar:
             exec(lexsemafunc_code, env)
             lex_func: FunctionType = env[name]
             
-            # set name for return of lex_func
-            def lex_func_decorator(lex_func: FunctionType, name: str):
-                def warpper(*args, **kwargs):
-                    g = lex_func(*args, **kwargs)
-                    assert isinstance(g, TerminalRule) 
-                    g.name = name
-                    return g
-                return warpper
+            # # set name for return of lex_func
+            # def lex_func_decorator(lex_func: FunctionType, name: str):
+            #     def warpper(self):
+            #         g = lex_func(self)
+            #         assert isinstance(g, TerminalRule) 
+            #         g.name = name
+            #         return g
+            #     return warpper
             
             # store lex function to ExecutionEngine
-            decorated_lex_func = lex_func_decorator(lex_func, name)
-            ExecutionEngine.lexerRulesWhenLex[name] = decorated_lex_func
+            # decorated_lex_func = lex_func_decorator(lex_func, name)
+            ExecutionEngine.lexerRulesWhenLex[name] = lex_func
             logging.debug(f"Code generated for lex function {name}: " + lexsemafunc_code_str)
             
         # update lex functions of self
@@ -81,13 +99,24 @@ class FeGenGrammar:
             setattr(self, name, MethodType(lex_func, self))
         
         # generate lex rules
+        # mapping function name and local variables
+        lexrule_list: List[TerminalRule] = []
+        locals_list: List[dict] = []
         for name, lexDef in ExecutionEngine.lexerRulesWhenLex.items():
-            lexRule = lexDef(self)
+            # execute lex function 
+            lexRule, local_vars = FeGenGrammar.__capture_locals(lexDef, self)
             assert isinstance(lexRule, TerminalRule)
+            lexRule.name = name
+            lexrule_list.append(lexRule)
+            locals_list.append(local_vars)
+        
+        for lexRule, local_vars in zip(lexrule_list, locals_list):
             prod = lexRule.production
+            name = lexRule.name
             gen = CodeGen()
             res = gen(prod)
             print(f"{name}: {res}")
+            print(f"local variables: {local_vars}")
             # TODO
     
     def parser(self) -> str:
@@ -340,11 +369,15 @@ class TerminalRule(Rule):
 
 @execute_when("parse")
 def newParserRule() -> ParserRule:
-    return ParserRule()
+    g = ParserRule()
+    g.name = sys._getframe(3).f_code.co_name
+    return g
 
 @execute_when("lex")
 def newTerminalRule(prod = None) -> TerminalRule:
-    return TerminalRule(prod)
+    g = TerminalRule(prod)
+    g.name = sys._getframe(3).f_code.co_name
+    return g
     
     
 

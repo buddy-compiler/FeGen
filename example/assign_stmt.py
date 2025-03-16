@@ -102,7 +102,6 @@ table : dict = {}
 """
 
 
-@attr_grammar
 class MyGrammar(FeGenGrammar):
     @parser
     def module(self):

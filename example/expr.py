@@ -13,6 +13,8 @@ class MyGrammar(FeGenGrammar):
     @lexer
     def test(self):
         g = newTerminalRule("test")
+        a = 10
+        b = 20
         print(g.text())
         return g
     
