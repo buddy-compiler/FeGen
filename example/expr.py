@@ -5,7 +5,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 class MyGrammar(FeGenGrammar):
     def __init__(self):
-        pass
+        super().__init__()
     
     """
         test: 'test';
@@ -18,20 +18,18 @@ class MyGrammar(FeGenGrammar):
         print(g.text())
         return g
     
-    
-    """
-        test1: test*;
-    """
-    @lexer
-    def test1(self):
-        g = newTerminalRule()
-        g.setProduction(one_or_more(self.test()))
-        print(g.text())
+    @parser
+    def parse_test(self):
+        g = newParserRule()
+        t = self.test()
+        t1 = self.test()
+        print(t.text())
+        g.setProduction(concat(t, t1))
         return g
-
-
 
 
 mygram = MyGrammar()
 mylexer = mygram.lexer()
-# myparser = mygram.parser()
+myparser = mygram.parser(mylexer)
+code = "test test"
+print(myparser.parse(code))

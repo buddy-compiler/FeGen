@@ -15,81 +15,6 @@ class ExecutionTimeError(Exception):
         super().__init__(self.message)  # make this exception picklable
 
 
-class Obj:
-    def __init__(self, name, isfunc, semarelated):
-        self.name = name
-        self.isfunc = isfunc
-        self.semarelated = semarelated
-            
-class Scope:
-    def __init__(self, parent: Optional[Scope]):
-        self.parent: Optional[Scope] = parent
-        self.name2obj: Dict[str, Obj] = {}
-
-    @staticmethod
-    def default_top_level():
-        scope = Scope(None)
-        return scope
-
-    def define_var(self, name: str, v: Obj):
-        self.name2obj[name] = v
-
-    def lookup(self, name: str, search_parents=True) -> Optional[Obj]:
-        if name in self.name2obj:
-            return self.name2obj[name]
-        if search_parents and self.parent:
-            return self.parent.lookup(name, search_parents)
-        return None
-
-
-class ScopeStack:
-    def __init__(self):
-        self.scopes: list[Scope] = [Scope.default_top_level()]
-
-    def __enter__(self) -> Scope:
-        parent = self.scopes[-1]
-        scope = Scope(parent)
-        self.scopes.append(scope)
-        return scope
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.scopes.pop()
-
-class SemaRelatedChecker(py_ast.NodeVisitor):
-    """return True if the node expressed value is Sema Related 
-    """
-    def __init__(self, env, semaRelate):
-        self.env: Dict[str, Any] = env
-        self.semaRelate : List[Any] = semaRelate
-        self.scope: Scope = None
-        
-        
-    def __call__(self, node, scope: Scope):
-        self.scope = scope
-        return self.visit(node)
-    
-    def visit_Call(self, node: py_ast.Call):
-        if self.visit(node.func):
-            return True
-        for arg in node.args:
-            if self.visit(arg):
-                return True
-        return False
-
-    def visit_Constant(self, node: py_ast.Constant):
-        return True
-            
-    def visit_Name(self, node: py_ast.Name):
-        iden = node.id
-        scope_res = self.scope.lookup(iden)
-        if scope_res is not None and scope_res.semarelated:
-            return True
-        if iden in self.env:
-            env_res = self.env[iden]
-            if hasattr(env_res, "execute_when") and getattr(env_res, "execute_when") == "sema":
-                return True
-        return False
-
 class LexLexTransformer(py_ast.NodeTransformer):
     """lex rules generate lex definations
     """
@@ -99,20 +24,8 @@ class LexLexTransformer(py_ast.NodeTransformer):
         self.file: str = file
         self.start_lineno: int = start_lineno
         self.start_column: int = start_column
-        self.env: Dict[str, Any] =  copy.copy(env)
+        self.env: Dict[str, Any] =  env
 
-    def scope(self):
-        """return scope stack
-        with self.scope() as env_scope:
-            ...
-        """
-        return self.scope_stack
-
-    @property
-    def current_scope(self) -> Scope:
-        if len(self.scope_stack.scopes) == 0:
-            raise ValueError('The scope stack is empty.')
-        return self.scope_stack.scopes[-1]
 
     def visit_Module(self, node: py_ast.Module):
         for consist in node.body:
@@ -136,7 +49,7 @@ class LexLexTransformer(py_ast.NodeTransformer):
                 logging.debug(f"""
 File "{self.file}", line {self.start_lineno}, col {self.start_column},
 Function "{self.func_name}",
-When generating {self.when}er:
+When generating {self.when}:
 Remove statement: "{codestr}" 
                             """)
             except Exception as e:
@@ -144,7 +57,7 @@ Remove statement: "{codestr}"
                 logging.warning(f"""
 File "{self.file}", line {self.start_lineno}, col {self.start_column},
 Function "{self.func_name}",
-When generating {self.when}er:
+When generating {self.when}:
 Remove statement: "{codestr}".
 It may caused by FeGen, or some error in code, exception details: 
 {e}
@@ -162,6 +75,8 @@ class ParseParseTransformer(py_ast.NodeTransformer):
         self.start_column: int = start_column
         self.env: Dict[str, Any] = env
     
+
+
 
 class LexSemaTransformer(py_ast.NodeTransformer):
     """lex rules generate sema definations
