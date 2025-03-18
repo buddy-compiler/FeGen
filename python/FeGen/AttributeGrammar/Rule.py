@@ -11,6 +11,10 @@ import ply.lex as lex
 import ply.yacc as yacc
 import os
 
+class LexOrParseError(Exception):
+    def __init__(self, msg: str):
+        super().__init__(msg)
+
 
 class FeGenLexer:
     def __init__(self, module):
@@ -18,17 +22,50 @@ class FeGenLexer:
         outputdir = os.path.join(os.path.dirname(__file__), self.module.__name__)
         self.lexer = lex.lex(module=self.module, debug=False, outputdir=outputdir)
 
+    def input(self, src: str):
+        self.lexer.input(src)
+        token_list = []
+        while True:
+            token = self.lexer.token()
+            if not token:
+                break
+            token_list.append(token)
+        return token_list
+            
 class FeGenParser:
-    def __init__(self, module, lexer: FeGenLexer, start: str):
+    def __init__(self, module, lexer: FeGenLexer, start: str, parser_rule_list, locals_list):
         self.module = module
         self.lexer = lexer
+        # ParserRule lists
+        self.parser_rule_list: List[ParserRule] = parser_rule_list
+
+        # get start ParseRule object
+        self.startrule = None
+        for pr in self.parser_rule_list:
+            if pr.name == start:
+                self.startrule = pr
+                break
+        if self.startrule is None:
+            parser_rule_names = [p.name for p in self.parser_rule_list]
+            raise LexOrParseError("\n\n\nCan not find start rule: `{start}` from `{name_list}`, maybe you forgot to decorate `{start}` by `@parser`".format(start=start, name_list=parser_rule_names))
+        
+        # generated local variables when rules parsing
+        self.locals_list: List[dict] = locals_list
+        
+        # create yacc parser
         outputdir = os.path.join(os.path.dirname(__file__), self.module.__name__)
-        self.parser = yacc.yacc(module=self.module, debug=True, outputdir=outputdir, start=start)
-
+        self.__parser = yacc.yacc(module=self.module, debug=True, outputdir=outputdir, start=start)
+        
     def parse(self, code):
-        res = self.parser.parse(code)
-        return res 
+        from .ExecuteEngine import ParserTreeBuilder
+        ExecutionEngine.WHEN = "parse"
+        raw_data = self.__parser.parse(code)
+        builder = ParserTreeBuilder()
+        builder(self.startrule, raw_data)
+        ExecutionEngine.WHEN = "sema"
+        return self.startrule
 
+# TODO: method lexer and parser can only be called once
 class FeGenGrammar:
     """
         base class of all grammar class
@@ -169,6 +206,7 @@ class FeGenGrammar:
             name = lexRule.name
             prod = lexRule.production
             lexprod = gen(prod)
+            logging.debug(f"Regular expression for rule '{name}' is {lexprod}")
             attr_dict.update({"t_" + name:  lexprod})
         # insert ignore and skip
         # TODO: skip
@@ -246,13 +284,16 @@ class FeGenGrammar:
         for parser_rule in parser_rule_list:
             gen(parser_rule)
         # generate PLY lexer
-        self.parserobj = FeGenParser(self.plymodule, lexer, start)
+        self.parserobj = FeGenParser(self.plymodule, lexer, start, parser_rule_list, locals_list)
         return self.parserobj
 
 
 class Production:
-    pass
+    def __init__(self):
+        self.content = None
 
+    def getText(self):
+        raise NotImplementedError()
 
 class ExecutionEngine:
     """Stores global variables
@@ -344,17 +385,6 @@ class ChatSet(Production):
 def char_set(charset: str):
     return ChatSet(charset)
 
-class ZeroOrMore(Production):
-    """
-        zero_or_more(A) --> A*
-    """
-    def __init__(self, prod: Production):
-        super().__init__()
-        self.prod = prod
-
-def zero_or_more(prod: Production):
-    return ZeroOrMore(prod)
-
 
 class OneOrMore(Production):
     """
@@ -362,10 +392,37 @@ class OneOrMore(Production):
     """
     def __init__(self, prod: Production):
         super().__init__()
-        self.prod = prod
+        self.template_prod = prod
+        self.children : List[Production] = [prod]
+
+    @execute_when("sema")
+    def getText(self):
+        if len(self.children) == 0:
+            return ""
+        else:
+            texts = [child.getText() for child in self.children]
+            return " ".join(texts)
 
 def one_or_more(prod: Production):
     return OneOrMore(prod)
+
+
+class ZeroOrMore(Production):
+    """
+        zero_or_more(A) --> A*
+    """
+    def __init__(self, prod: Production):
+        super().__init__()
+        self.template_prod = prod
+        self.children : List[Production] = [prod]
+
+    @execute_when("sema")
+    def getText(self):
+        texts = [child.getText() for child in self.children]
+        return " ".join(texts)
+
+def zero_or_more(prod: Production):
+    return ZeroOrMore(prod)
 
 
 class ZeroOrOne(Production):
@@ -376,6 +433,11 @@ class ZeroOrOne(Production):
         super().__init__()
         self.prod = prod
 
+    @execute_when("sema")
+    def getText(self):
+        if self.prod.content is None:
+            return ""
+        return self.prod.getText()
 
 def zero_or_one(prod: Production):
     return ZeroOrOne(prod)
@@ -389,6 +451,11 @@ class Concat(Production):
         super().__init__()
         self.rules : List[Production] = args
 
+    @execute_when("sema")
+    def getText(self):
+        texts = [rule.getText() for rule in self.rules]
+        return " ".join(texts)
+
 def concat(*args):
     return Concat(*args)
 
@@ -399,7 +466,13 @@ class Alternate(Production):
     def __init__(self, *args):
         super().__init__()
         self.altfuncs : List[FunctionType] = args
-        self.alts : List[Production] = [func() for func in self.altfuncs]
+        self.template_alts : List[Production] = [func() for func in self.altfuncs]
+        # the actual matched sub prod
+        self.prod : Production = None
+
+    @execute_when("sema")
+    def getText(self):
+        return self.prod.getText()
 
 def alternate(*args):
     return Alternate(*args)
@@ -416,6 +489,7 @@ class Attribute:
 
 class Rule(Production):
     def __init__(self, production = None):
+        super().__init__()
         self.production = None
         self.name = "UNKNOWN"
         self.setProduction(production)
@@ -425,7 +499,6 @@ class Rule(Production):
 
 
 class ParserRule(Rule):
-    
     def __init__(self, production = None):
         super().__init__(production)
         self.attributes : Dict[str, Attribute] = []
@@ -468,6 +541,10 @@ class ParserRule(Rule):
         self.visited = True
         # TODO: VISIT
 
+    @execute_when("sema")
+    def getText(self):
+        return self.production.getText()
+            
 class TerminalRule(Rule):
     def __init__(self, production = None):
         super().__init__(production)
@@ -481,6 +558,13 @@ class TerminalRule(Rule):
     @execute_when("sema")
     def text(self) -> str:
         print("get text: not implemented.")
+
+    @execute_when("sema")
+    def getText(self):
+        if self.content is None:
+            return ""
+        assert isinstance(self.content, str)
+        return self.content
 
 @execute_when("parse")
 def newParserRule(prod = None) -> ParserRule:

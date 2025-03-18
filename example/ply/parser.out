@@ -2,52 +2,38 @@ Created by PLY version 3.11 (http://www.dabeaz.com/ply)
 
 Grammar
 
-Rule 0     S' -> test
-Rule 1     test -> __zero_or_one_A
-Rule 2     __zero_or_one_A -> A
-Rule 3     __zero_or_one_A -> <empty>
+Rule 0     S' -> number
+Rule 1     number -> NUM
 
 Terminals, with rules where they appear
 
-A                    : 2
+NUM                  : 1
 error                : 
 
 Nonterminals, with rules where they appear
 
-__zero_or_one_A      : 1
-test                 : 0
+number               : 0
 
 Parsing method: LALR
 
 state 0
 
-    (0) S' -> . test
-    (1) test -> . __zero_or_one_A
-    (2) __zero_or_one_A -> . A
-    (3) __zero_or_one_A -> .
+    (0) S' -> . number
+    (1) number -> . NUM
 
-    A               shift and go to state 3
-    $end            reduce using rule 3 (__zero_or_one_A -> .)
+    NUM             shift and go to state 2
 
-    test                           shift and go to state 1
-    __zero_or_one_A                shift and go to state 2
+    number                         shift and go to state 1
 
 state 1
 
-    (0) S' -> test .
+    (0) S' -> number .
 
 
 
 state 2
 
-    (1) test -> __zero_or_one_A .
+    (1) number -> NUM .
 
-    $end            reduce using rule 1 (test -> __zero_or_one_A .)
-
-
-state 3
-
-    (2) __zero_or_one_A -> A .
-
-    $end            reduce using rule 2 (__zero_or_one_A -> A .)
+    $end            reduce using rule 1 (number -> NUM .)
 

@@ -1,5 +1,5 @@
 from types import FunctionType
-from typing import Type, Dict
+from typing import Type, Dict, Optional
 from .Rule import *
 
 class CodeGenError(Exception):
@@ -7,31 +7,56 @@ class CodeGenError(Exception):
         super().__init__(msg)
 
 
-class BaseCodeGen:
+class BaseVisitor:
     def __init__(self):
         pass
     
-    def __call__(self, prod):
-        return self.visit(prod)
+    def __call__(self, prod, *args, **kwargs):
+        return self.visit(prod, *args, **kwargs)
         
-    def visit(self, prod) -> str:
+    def visit(self, prod, *args, **kwargs) -> str:
         visitor_name = "visit_" + prod.__class__.__name__
         visitor = getattr(self, visitor_name)
         if visitor is None:
             raise CodeGenError(f"Can not find visit function: {visitor_name}")
-        return visitor(prod)
+        return visitor(prod, *args, **kwargs)
 
-class LexerProdGen(BaseCodeGen):   
+class LexerProdGen(BaseVisitor):
+    """Generate regular expression for terminal rule
+    """
     def visit_TerminalRule(self, rule: TerminalRule):
         return rule.name
     
     def visit_str(self, s: str):
         return s
 
-    def visit_OneOrMore(self, prod: Concat):
-        return self.visit(prod.rule) + "*"
+    def visit_ChatSet(self, prod: ChatSet):
+        return prod.charset
+
+    def visit_Concat(self, prod: Concat):
+        prod_exprs = [self.visit(p) for p in prod.rules]
+        sur_prod_exprs = [f"({prod_expr})" for prod_expr in prod_exprs]
+        return R"{}".format("".join(sur_prod_exprs))
     
-class ParserProdGen(BaseCodeGen):
+    def visit_Alternate(self, prod: Alternate):
+        prod_exprs = [self.visit(p) for p in prod.template_alts]
+        return R"{}".format("|".join(prod_exprs))
+    
+    def visit_ZeroOrOne(self, prod: ZeroOrOne):
+        prod_expr = self.visit(prod.prod)
+        return R"{}?".format(prod_expr)
+
+    def visit_ZeroOrMore(self, prod: ZeroOrMore):
+        prod_expr = self.visit(prod.template_prod)
+        return R"{}*".format(prod_expr)
+        
+    def visit_OneOrMore(self, prod: OneOrMore):
+        prod_expr = self.visit(prod.template_prod)
+        return R"{}+".format(prod_expr)
+    
+    
+    
+class ParserProdGen(BaseVisitor):
     def __init__(self, attr_dict):
         super().__init__()
         self.attr_dict : Dict[str, Any] = attr_dict
@@ -49,7 +74,7 @@ class ParserProdGen(BaseCodeGen):
         prod = rule.production
         p_name = self.visit(prod)
         def template(p):
-            p[0] = {p_name: p[1]}
+            p[0] = (p_name, p[1])
         template.__name__ = f"p_{rulename}"
         template.__doc__ = f"{rulename} : {p_name}"
         self.attr_dict.update({template.__name__: template}) 
@@ -76,12 +101,12 @@ class ParserProdGen(BaseCodeGen):
         # define function and insert to attr dict
         def template(p):
             assert len(p) - 1 == len(prod_children_names)
-            d = dict()
+            d = list()
             for i in range(len(prod_children_names)):
                 child_name = prod_children_names[i]
                 pi = p[i + 1]
-                d.update({child_name: pi})
-            p[0] = d
+                d.append((child_name, pi))
+            p[0] = tuple(d)
         template.__name__ = f"p_{rule_name}"
         template.__doc__ = "{rule_name} : {prod_children}".format(rule_name=rule_name, prod_children = " ".join(prod_children_names))
         self.attr_dict.update({template.__name__: template})
@@ -96,17 +121,22 @@ class ParserProdGen(BaseCodeGen):
         __alt_A_B: B          # in function p___alt_A_B_1
         """
         # visit and get alt names
-        alt_names = [self.visit(alt) for alt in prod.alts]
+        alt_names = [self.visit(alt) for alt in prod.template_alts]
         rule_name = "__alt_" + "_".join(alt_names)
         # return rule_name if exist
         if rule_name in self.attr_dict:
             return rule_name
-        # traverse alt names and create functions
-        for idx, alt_name in enumerate(alt_names):
+        
+        def generate_template(rule_name, idx, alt_name):
             def template(p):
-                p[0] = p[1]
+                p[0] = (idx, alt_name, p[1])
             template.__name__ = f"p_{rule_name}_{idx}"
             template.__doc__ = f"{rule_name} : {alt_name}"
+            return template
+        
+        # traverse alt names and create functions
+        for idx, alt_name in enumerate(alt_names):
+            template = generate_template(rule_name, idx, alt_name)
             self.attr_dict.update({template.__name__: template})
         return rule_name
     
@@ -120,7 +150,7 @@ class ParserProdGen(BaseCodeGen):
                        |
                        
         """
-        child_name = self.visit(prod.prod)
+        child_name = self.visit(prod.template_prod)
         rule_name = f"__zero_or_more_{child_name}"
         # return rule_name if exist
         if rule_name in self.attr_dict:
@@ -150,7 +180,7 @@ class ParserProdGen(BaseCodeGen):
         __one_or_more_A : __one_or_more_A A     # in function p___one_or_more_A
                       | A
         """
-        child_name = self.visit(prod.prod)
+        child_name = self.visit(prod.template_prod)
         rule_name = f"__one_or_more_{child_name}"
         # return rule_name if exist
         if rule_name in self.attr_dict:
@@ -196,3 +226,67 @@ class ParserProdGen(BaseCodeGen):
                                            |"""
         self.attr_dict.update({template.__name__: template})
         return rule_name
+    
+    
+class ParserTreeBuilder(BaseVisitor):
+    def __init__(self):
+        super().__init__()
+        
+    def __call__(self, start_rule: ParserRule, data: dict):
+        self.visit(start_rule, data)
+        
+    def visit_ParserRule(self, rule: ParserRule, data: Tuple[str, Any]):
+        rule.content = data
+        assert len(data) == 2
+        self.visit(rule.production, data[1])
+        
+    def visit_TerminalRule(self, rule: TerminalRule, data: str):
+        rule.content = data
+
+    def visit_Concat(self, prod: Concat, data: Tuple[Tuple[str, Any]]):
+        prod.content = data
+        assert len(prod.rules) == len(data)
+        for p, d in zip(prod.rules, data):
+            assert len(d) == 2
+            self.visit(p, d[1])
+    
+    def visit_Alternate(self, prod: Alternate, data: Tuple[int, str, Any]):
+        prod.content = data
+        assert len(data) == 3
+        # set actual matched child
+        idx = data[0]
+        prod.prod = prod.template_alts[idx]
+        self.visit(prod.prod, data[2])
+    
+    def visit_ZeroOrOne(self, prod: ZeroOrOne, data: Optional[Any]):
+        prod.content = data
+        if data is not None:
+            self.visit(prod.prod, data)
+    
+    def visit_ZeroOrMore(self, prod: ZeroOrMore, data: List[Any]):
+        prod.content = data
+        if len(data) == 0: # if prod match no content
+            prod.template_prod.content = None
+        else:
+            # copy children
+            for _ in range(len(data) - 1):
+                newchild = copy.deepcopy(prod.template_prod)
+                prod.children.append(newchild)
+                
+            assert len(prod.children) == len(data)
+            # visit children
+            for child, child_data in zip(prod.children, data):
+                self.visit(child, child_data)
+    
+    def visit_OneOrMore(self, prod: OneOrMore, data: List[Any]):
+        prod.content = data
+        # copy children
+        for _ in range(len(data) - 1):
+            newchild = copy.deepcopy(prod.template_prod)
+            prod.children.append(newchild)
+            
+        assert len(prod.children) == len(data)
+        # visit children
+        for child, child_data in zip(prod.children, data):
+            self.visit(child, child_data)
+    
