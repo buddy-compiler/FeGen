@@ -4,8 +4,8 @@ import inspect
 import copy
 import ast as py_ast
 import astunparse
-from .RuleDefinationTransformer import LexLexTransformer, ParseParseTransformer, LexSemaTransformer, ParseSemaTransformer, ExecutionTimeError
-import logging
+from .RuleDefinationTransformer import LexLexTransformer, LexSemaTransformer, ParseSemaTransformer, ExecutionTimeError
+import logging  
 import sys
 import ply.lex as lex
 import ply.yacc as yacc
@@ -19,11 +19,11 @@ class FeGenLexer:
         self.lexer = lex.lex(module=self.module, debug=False, outputdir=outputdir)
 
 class FeGenParser:
-    def __init__(self, module, lexer: FeGenLexer):
+    def __init__(self, module, lexer: FeGenLexer, start: str):
         self.module = module
         self.lexer = lexer
         outputdir = os.path.join(os.path.dirname(__file__), self.module.__name__)
-        self.parser = yacc.yacc(module=self.module, debug=True, outputdir=outputdir)
+        self.parser = yacc.yacc(module=self.module, debug=True, outputdir=outputdir, start=start)
 
     def parse(self, code):
         res = self.parser.parse(code)
@@ -182,7 +182,7 @@ class FeGenGrammar:
         self.lexerobj = FeGenLexer(self.plymodule)
         return self.lexerobj
     
-    def parser(self, lexer: FeGenLexer) -> FeGenParser:
+    def parser(self, lexer: FeGenLexer, start = None) -> FeGenParser:
         if self.parserobj is not None:
             return self.parserobj
         from .ExecuteEngine import ParserProdGen
@@ -246,7 +246,7 @@ class FeGenGrammar:
         for parser_rule in parser_rule_list:
             gen(parser_rule)
         # generate PLY lexer
-        self.parserobj = FeGenParser(self.plymodule, lexer)
+        self.parserobj = FeGenParser(self.plymodule, lexer, start)
         return self.parserobj
 
 
@@ -348,24 +348,37 @@ class ZeroOrMore(Production):
     """
         zero_or_more(A) --> A*
     """
-    def __init__(self, rule: "Rule"):
+    def __init__(self, prod: Production):
         super().__init__()
-        self.rule = rule
+        self.prod = prod
 
-def zero_or_more(rule: "Rule"):
-    return ZeroOrMore(rule)
+def zero_or_more(prod: Production):
+    return ZeroOrMore(prod)
 
 
 class OneOrMore(Production):
     """
         one_or_more(A) --> A+ 
     """
-    def __init__(self, rule: "Rule"):
+    def __init__(self, prod: Production):
         super().__init__()
-        self.rule = rule
+        self.prod = prod
 
-def one_or_more(rule: "Rule"):
-    return OneOrMore(rule)
+def one_or_more(prod: Production):
+    return OneOrMore(prod)
+
+
+class ZeroOrOne(Production):
+    """
+        zero_or_one(A) --> A?
+    """
+    def __init__(self, prod: Production):
+        super().__init__()
+        self.prod = prod
+
+
+def zero_or_one(prod: Production):
+    return ZeroOrOne(prod)
 
 
 class Concat(Production):
@@ -374,7 +387,7 @@ class Concat(Production):
     """
     def __init__(self, *args):
         super().__init__()
-        self.rules : List[Rule] = args
+        self.rules : List[Production] = args
 
 def concat(*args):
     return Concat(*args)
@@ -385,12 +398,11 @@ class Alternate(Production):
     """
     def __init__(self, *args):
         super().__init__()
-        self.alts : List[FunctionType] = args
-
+        self.altfuncs : List[FunctionType] = args
+        self.alts : List[Production] = [func() for func in self.altfuncs]
 
 def alternate(*args):
     return Alternate(*args)
-
 
 class Attribute:
     def __init__(self, name: str, ty: Type, init = None):
@@ -402,7 +414,7 @@ class Attribute:
         assert (isinstance(value, self.ty) or value is None) and f"mismatch type."
         self.value = value
 
-class Rule:
+class Rule(Production):
     def __init__(self, production = None):
         self.production = None
         self.name = "UNKNOWN"
@@ -471,8 +483,8 @@ class TerminalRule(Rule):
         print("get text: not implemented.")
 
 @execute_when("parse")
-def newParserRule() -> ParserRule:
-    g = ParserRule()
+def newParserRule(prod = None) -> ParserRule:
+    g = ParserRule(prod)
     g.name = sys._getframe(3).f_code.co_name
     return g
 

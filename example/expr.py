@@ -7,29 +7,64 @@ class MyGrammar(FeGenGrammar):
     def __init__(self):
         super().__init__()
     
-    """
-        test: 'test';
-    """
     @lexer
-    def test(self):
-        g = newTerminalRule("test")
-        a = 10
-        b = 20
+    def A(self):
+        g = newTerminalRule("A")
         print(g.text())
+        return g
+
+    @lexer
+    def B(self):
+        g = newTerminalRule("B")
+        print(g.text())
+        return g            
+    
+    @parser
+    def a_and_b(self):
+        g = newParserRule()
+        a = self.A()
+        b = self.B()
+        a.text()
+        g.setProduction(concat(a, b))
+        return g
+
+    @parser
+    def a_or_b(self):
+        g = newParserRule()
+        def alt1():
+            a = self.A()
+            print(a.text())
+            return a
+        def alt2():
+            return self.B()
+        g.setProduction(alternate(alt1, alt2))
+        return g
+
+    @parser
+    def a_star(self):
+        g = newParserRule()
+        g.setProduction(zero_or_more(self.A()))
+        return g
+
+    @parser
+    def a_plus(self):
+        g = newParserRule()
+        g.setProduction(one_or_more(self.A()))
         return g
     
     @parser
-    def parse_test(self):
+    def a_or_b_plus(self):
         g = newParserRule()
-        t = self.test()
-        t1 = self.test()
-        print(t.text())
-        g.setProduction(concat(t, t1))
+        g.setProduction(one_or_more(self.a_or_b()))
         return g
 
+    @parser
+    def opt_a_and_b(self):
+        return newParserRule(zero_or_one(self.a_and_b()))
+        
 
 mygram = MyGrammar()
 mylexer = mygram.lexer()
-myparser = mygram.parser(mylexer)
-code = "test test"
+myparser = mygram.parser(mylexer, "opt_a_and_b")
+code = "A B"
 print(myparser.parse(code))

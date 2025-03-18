@@ -48,11 +48,11 @@ class ParserProdGen(BaseCodeGen):
         rulename = rule.name
         prod = rule.production
         p_name = self.visit(prod)
-        def p_(p):
+        def template(p):
             p[0] = {p_name: p[1]}
-        p_.__name__ += rulename
-        p_.__doc__ = f"{rulename} : {p_name}"
-        self.attr_dict.update({p_.__name__: p_}) 
+        template.__name__ = f"p_{rulename}"
+        template.__doc__ = f"{rulename} : {p_name}"
+        self.attr_dict.update({template.__name__: template}) 
     
     def visit_TerminalRule(self, prod: TerminalRule):
         return prod.name
@@ -61,14 +61,20 @@ class ParserProdGen(BaseCodeGen):
         return prod.name
     
     def visit_Concat(self, prod: Concat):
+        """
+        a_and_b: A B
+            -->
+        a_and_b: __concat_A_B     # in function p_a_and_b
+        __concat_A_B: A B         # in function p___concat_A_B
+        """
         # visit and get children prod names
         prod_children_names: List[str] = [self.visit(r) for r in prod.rules]
-        rule_name = "concat_" + "_".join(prod_children_names)
+        rule_name = "__concat_" + "_".join(prod_children_names)
         # return if rule name is already existed
         if rule_name in self.attr_dict:
             return rule_name
         # define function and insert to attr dict
-        def p_(p):
+        def template(p):
             assert len(p) - 1 == len(prod_children_names)
             d = dict()
             for i in range(len(prod_children_names)):
@@ -76,8 +82,117 @@ class ParserProdGen(BaseCodeGen):
                 pi = p[i + 1]
                 d.update({child_name: pi})
             p[0] = d
-        p_.__name__ += rule_name
-        p_.__doc__ = "{rule_name} : {prod_children}".format(rule_name=rule_name, prod_children = " ".join(prod_children_names))
-        self.attr_dict.update({p_.__name__: p_})
+        template.__name__ = f"p_{rule_name}"
+        template.__doc__ = "{rule_name} : {prod_children}".format(rule_name=rule_name, prod_children = " ".join(prod_children_names))
+        self.attr_dict.update({template.__name__: template})
         return rule_name
-    # def visit_(self, prod)
+    
+    def visit_Alternate(self, prod: Alternate):
+        """
+        a_or_b: A | B
+            -->
+        a_or_b: __alt_A_B     # in function p_a_or_b
+        __alt_A_B: A          # in function p___alt_A_B_0
+        __alt_A_B: B          # in function p___alt_A_B_1
+        """
+        # visit and get alt names
+        alt_names = [self.visit(alt) for alt in prod.alts]
+        rule_name = "__alt_" + "_".join(alt_names)
+        # return rule_name if exist
+        if rule_name in self.attr_dict:
+            return rule_name
+        # traverse alt names and create functions
+        for idx, alt_name in enumerate(alt_names):
+            def template(p):
+                p[0] = p[1]
+            template.__name__ = f"p_{rule_name}_{idx}"
+            template.__doc__ = f"{rule_name} : {alt_name}"
+            self.attr_dict.update({template.__name__: template})
+        return rule_name
+    
+    def visit_ZeroOrMore(self, prod: ZeroOrMore):
+        """
+        multi_A: A*
+            --> 
+        multi_A: __zero_or_more_A             # in function p_multi_A
+        __zero_or_more_A : __zero_or_more_A A   # in function p___zero_or_more_A
+                       | A
+                       |
+                       
+        """
+        child_name = self.visit(prod.prod)
+        rule_name = f"__zero_or_more_{child_name}"
+        # return rule_name if exist
+        if rule_name in self.attr_dict:
+            return rule_name
+        def template(p):
+            p_len = len(p)
+            if p_len == 1:
+                p[0] = []
+            elif p_len == 2:
+                p[0] = [p[1]]
+            elif p_len == 3:
+                p[0] = p[1] + [p[2]]
+            else:
+                assert False
+        template.__name__ = f"p_{rule_name}"
+        template.__doc__ = f"""{rule_name} : {rule_name} {child_name}
+                                           | {child_name}
+                                           |"""
+        self.attr_dict.update({template.__name__: template})
+        return rule_name
+        
+    def visit_OneOrMore(self, prod: OneOrMore):
+        """
+        multi_A: A+
+            -->
+        multi_A: __one_or_more_A                # in function p_multi_A
+        __one_or_more_A : __one_or_more_A A     # in function p___one_or_more_A
+                      | A
+        """
+        child_name = self.visit(prod.prod)
+        rule_name = f"__one_or_more_{child_name}"
+        # return rule_name if exist
+        if rule_name in self.attr_dict:
+            return rule_name
+        def template(p):
+            p_len = len(p)
+            if p_len == 2:
+                p[0] = [p[1]]
+            elif p_len == 3:
+                p[0] = p[1] + [p[2]]
+            else:
+                assert False
+        template.__name__ = f"p_{rule_name}"
+        template.__doc__ = f"""{rule_name} : {rule_name} {child_name}
+                                           | {child_name}"""
+        self.attr_dict.update({template.__name__: template})
+        return rule_name
+    
+
+    def visit_ZeroOrOne(self, prod: ZeroOrOne):
+        """
+        opt_a : A?
+            --> 
+        opt_a : __zero_or_one_A     # in function p_opt_a
+        __zero_or_one_A : A         # in function p___zero_or_one_A
+                        |
+        """
+        child_name = self.visit(prod.prod)
+        rule_name = f"__zero_or_one_{child_name}"
+        # return rule_name if exist
+        if rule_name in self.attr_dict:
+            return rule_name
+        def template(p):
+            p_len = len(p)
+            if p_len == 1:
+                p[0] = None
+            elif p_len == 2:
+                p[0] = p[1]
+            else:
+                assert False
+        template.__name__ = f"p_{rule_name}"
+        template.__doc__ = f"""{rule_name} : {child_name}
+                                           |"""
+        self.attr_dict.update({template.__name__: template})
+        return rule_name
