@@ -58,12 +58,12 @@ class FeGenParser:
         
     def parse(self, code):
         from .ExecuteEngine import ParserTreeBuilder
-        ExecutionEngine.WHEN = "parse"
         raw_data = self.__parser.parse(code)
         builder = ParserTreeBuilder()
-        builder(self.startrule, raw_data)
+        rule = copy.deepcopy(self.startrule)
+        builder(rule, raw_data)
         ExecutionEngine.WHEN = "sema"
-        return self.startrule
+        return rule
 
 # TODO: method lexer and parser can only be called once
 class FeGenGrammar:

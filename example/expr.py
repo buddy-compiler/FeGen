@@ -66,7 +66,10 @@ class MyGrammar(FeGenGrammar):
 mygram = MyGrammar()
 mylexer = mygram.lexer()
 myparser = mygram.parser(mylexer, "a_or_b_plus")
-code = "A B A A A B B "
+code = "A B"
 tree = myparser.parse(code)
-ExecutionEngine.WHEN = "sema"
 print(tree.getText())
+
+# code = "A B A"
+# tree = myparser.parse(code)
+# print(tree.getText())
