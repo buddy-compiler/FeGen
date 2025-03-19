@@ -28,16 +28,16 @@ class Scope:
             return self.table[name]
         return None
 
-class LexLexTransformer(py_ast.NodeTransformer):
+class LexParserConvertor(py_ast.NodeTransformer):
     """lex rules generate lex definations
     """
-    def __init__(self, when: str, func_name: str, file: str, start_lineno: int, start_column: int, env):
+    def __init__(self, when: str, func_name: str, file: str, start_lineno: int, start_column: int, global_env: dict):
         self.when: str = when
         self.func_name: str = func_name
         self.file: str = file
         self.start_lineno: int = start_lineno
         self.start_column: int = start_column
-        self.global_scope: Scope =  Scope(env)
+        self.global_scope: Scope =  Scope(global_env)
         self.scopestack : List[Scope] = [self.global_scope]
 
     @property

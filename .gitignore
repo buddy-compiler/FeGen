@@ -2,3 +2,4 @@ __pycache__/
 *.egg-info/
 PLYModule/
 .pytest_cache/
+.VSCodeCounter/

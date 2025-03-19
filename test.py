@@ -1,2 +1,3 @@
-for i in range(1, 10):
-    print(i)
+x = {1 : 2}
+y = {2 : 3}
+print({**x, **y})

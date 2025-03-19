@@ -255,7 +255,7 @@ class ParserTreeBuilder(BaseVisitor):
         assert len(data) == 3
         # set actual matched child
         idx = data[0]
-        prod.prod = prod.template_alts[idx]
+        prod.prod = prod.template_alt_funcs[idx]()
         self.visit(prod.prod, data[2])
     
     def visit_ZeroOrOne(self, prod: ZeroOrOne, data: Optional[Any]):

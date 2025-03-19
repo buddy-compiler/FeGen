@@ -1,4 +1,10 @@
 {
     "python.REPL.enableREPLSmartSend": false,
-    "python.analysis.extraPaths": ["/home/chh/gitprojects/xdsl", "/home/chh/gitprojects/fegen-python-embedding/python"]
+    "python.analysis.extraPaths": ["/home/chh/gitprojects/xdsl", "/home/chh/gitprojects/fegen-python-embedding/python"],
+    "VSCodeCounter.languages": {
+        "python": {
+            "aliases": ["py"],
+            "extensions": [".py"]
+        }
+    }
 }
