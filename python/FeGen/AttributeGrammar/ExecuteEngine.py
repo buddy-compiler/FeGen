@@ -231,6 +231,8 @@ class ParserProdGen(BaseVisitor):
 class ParserTreeBuilder(BaseVisitor):
     def __init__(self):
         super().__init__()
+        self.parser_locals_dict: Dict[ParserRule, Dict[str, Any]] = {}
+        self.lexer_locals_dict: Dict[TerminalRule, Dict[str, Any]] = {}
         
     def __call__(self, start_rule: ParserRule, data: dict):
         self.visit(start_rule, data)
@@ -250,12 +252,54 @@ class ParserTreeBuilder(BaseVisitor):
             assert len(d) == 2
             self.visit(p, d[1])
     
+    def __capture_alt_locals(self, func: FunctionType):
+        """execute to capture local variables of the actual alt of Alternate Object"""
+        parser_locals_dict: Dict[ParserRule, Dict[str, Any]] = {}
+        lexer_locals_dict: Dict[TerminalRule, Dict[str, Any]] = {}
+        locals_dict : Dict[str, Any] = {}
+        actual_func_name = func.__name__
+        
+        parser_rule_names = list(ExecutionEngine.parserRuleFunc.keys())
+        lexer_rule_names = list(ExecutionEngine.lexerRuleFunc.keys())
+        
+        def trace_function(frame: FrameType, event: str, arg):
+            if event == 'return':
+                func_name = frame.f_code.co_name
+                if func_name in parser_rule_names and isinstance(arg, ParserRule):
+                    parser_locals_dict.update({arg: frame.f_locals})
+                elif func_name in lexer_rule_names and isinstance(arg, TerminalRule):
+                    lexer_locals_dict.update({arg: frame.f_locals})
+                elif func_name == actual_func_name:
+                    locals_dict.update(frame.f_locals)
+            return trace_function
+        
+        
+        original_trace = sys.gettrace()
+        sys.settrace(trace_function)
+        try:
+            res = func() # execute
+        finally:
+            sys.settrace(original_trace)  # resume trace function
+        
+        return (res, parser_locals_dict, lexer_locals_dict, locals_dict)
+        
+    
     def visit_Alternate(self, prod: Alternate, data: Tuple[int, str, Any]):
         prod.content = data
         assert len(data) == 3
         # set actual matched child
         idx = data[0]
-        prod.prod = prod.template_alt_funcs[idx]()
+        prod.idx = idx
+        actual_func = prod.template_alt_funcs[idx]
+        # execute and collect local variables
+        res, parser_locals_dict, lexer_locals_dict, locals_dict = self.__capture_alt_locals(actual_func)
+        
+        prod.prod = res
+        prod.alt_locals = locals_dict
+        # store local variables
+        self.parser_locals_dict.update(parser_locals_dict)
+        self.lexer_locals_dict.update(lexer_locals_dict)
+        # visit child
         self.visit(prod.prod, data[2])
     
     def visit_ZeroOrOne(self, prod: ZeroOrOne, data: Optional[Any]):
@@ -289,4 +333,8 @@ class ParserTreeBuilder(BaseVisitor):
         # visit children
         for child, child_data in zip(prod.children, data):
             self.visit(child, child_data)
-    
+
+
+class ParserTreeVisitor(BaseVisitor):
+    def __init__(self):
+        super().__init__()

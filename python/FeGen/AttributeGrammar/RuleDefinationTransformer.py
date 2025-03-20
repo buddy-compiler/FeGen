@@ -74,7 +74,7 @@ class LexParserConvertor(py_ast.NodeTransformer):
 File "{self.file}", line {self.start_lineno}, col {self.start_column},
 Function "{self.func_name}",
 When generating {self.when}:
-Remove statement: "{codestr}" 
+Remove statement: "{codestr}"
                         """)
         except Exception as e:
             codestr = py_ast.unparse(stmt)
@@ -90,62 +90,68 @@ It may caused by FeGen, or some error in code, exception details:
         return False
     
     
-    def visit_Module(self, node: py_ast.Module):
-        for consist in node.body:
+    def split_parse_sema(self, node: py_ast.AST) -> Tuple[py_ast.AST, py_ast.AST]:
+        assert isinstance(node, py_ast.Module)
+        parse_node = node
+        sema_node = copy.deepcopy(node)
+        return self.visit_Module(parse_node, sema_node)
+        
+    
+    def visit_Module(self, parse_node: py_ast.Module, sema_node: py_ast.Module):
+        for parse_consist, sema_consist in zip(parse_node.body, sema_node.body):
             # only change function body
-            if isinstance(consist, py_ast.FunctionDef):
+            if isinstance(parse_consist, py_ast.FunctionDef):
                 assert len(self.scopestack) == 1
+                assert isinstance(sema_consist, py_ast.FunctionDef)
+                
                 self.push()
                 _self = self.global_scope.loopup("self")
                 assert _self is not None
                 self.current_scope.insert("self", _self)
-                self.visit_FunctionDef(consist)
+                self.visit_FunctionDef(parse_consist, sema_consist)
                 self.pop()
-        return node
+                
+        return parse_node, sema_node
 
-    def visit_FunctionDef(self, node: py_ast.FunctionDef):
-        newbody = []
-        for stmt in node.body:
-            if isinstance(stmt, py_ast.Return):
-                newbody.append(stmt)
+
+    def visit_FunctionDef(self, parse_node: py_ast.FunctionDef, sema_node: py_ast.Module):
+        parse_newbody = []
+        sema_newbody = []
+
+        for stmt in parse_node.body:
+            if isinstance(stmt, py_ast.Return): # return stmt only insert to parse body
+                parse_newbody.append(stmt)
                 break
             elif isinstance(stmt, py_ast.FunctionDef):
                 self.push()
-                newfunc = self.visit(stmt)
+                parse_func, sema_func = self.visit_FunctionDef(stmt, copy.deepcopy(stmt))
                 self.pop()
-                flag = self.try_exec(newfunc)
+                flag = self.try_exec(parse_func)
                 assert flag
-                newbody.append(newfunc)
+                parse_newbody.append(parse_func)
+                sema_newbody.append(sema_func)
+            elif isinstance(stmt, py_ast.Assign):
+                # declare variables defined in parse/lex as global variable 
+                if(self.try_exec(stmt)):
+                    parse_newbody.append(stmt)
+                    targets = stmt.targets
+                    global_variables = []
+                    for t in targets:
+                        if isinstance(t, py_ast.Name):
+                            global_variables.append(t.id)
+                    global_stmt = py_ast.Global(global_variables)
+                    sema_newbody.append(global_stmt)
+                else:
+                    sema_newbody.append(stmt)
             else:
                 if(self.try_exec(stmt)):
-                    newbody.append(stmt)
+                    parse_newbody.append(stmt)
+                else:
+                    sema_newbody.append(stmt)
                     
                     
-        node.body = newbody
-        return node
-
-
-
-
-
-class LexSemaTransformer(py_ast.NodeTransformer):
-    """lex rules generate sema definations
-    """
-    def __init__(self, func_name: str,  file: str, start_lineno: int, start_column: int, env):
-        self.func_name = func_name
-        self.file: str = file
-        self.start_lineno: int = start_lineno
-        self.start_column: int = start_column
-        self.env: Dict[str, Any] = env
-    
-    
-    
-class ParseSemaTransformer(py_ast.NodeTransformer):
-    """parse rules generate sema defination
-    """
-    def __init__(self, file: str, start_lineno: int, start_column: int, env):
-        self.file: str = file
-        self.start_lineno: int = start_lineno
-        self.start_column: int = start_column
-        self.env: Dict[str, Any] = env
-    
+        parse_node.body = parse_newbody
+        if len(sema_newbody) == 0:
+            sema_newbody.append(py_ast.Pass())
+        sema_node.body = sema_newbody
+        return parse_node, sema_node

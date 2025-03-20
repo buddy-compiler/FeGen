@@ -34,51 +34,33 @@ class MyGrammar(FeGenGrammar):
     
     @parser
     def expression(self):
-        g = newParserRule()
         g_expr = self.add_expr()
-        g.setProduction(g_expr)
-        g.set_attr("value", g_expr.get_attr("value"))
-        return g
+        return newParserRule(g_expr)
         
     @parser
     def add_expr(self):
         g = newParserRule()
         def alt1():
-            g_lhs = self.add_expr()
-            g_rhs = self.prim_expr()
-            lhs = g_lhs.get_attr("value")
-            rhs = g_rhs.get_attr("value")
-            g.set_attr("value", lhs + rhs)
-            return concat(g_lhs, self.Add(), g_rhs)
+            lhs = self.add_expr()
+            rhs = self.prim_expr()
+            return concat(lhs, self.Add(), rhs)
         
         def alt2():
-            g_prim_expr = self.prim_expr()
-            g.set_attr("value", g_prim_expr.get_attr("value"))
-            return g_prim_expr
+            return self.prim_expr()
         
-        g_alt = alternate(alt1, alt2)
-        g_alt.visit()
-        g.setProduction(g_alt)
+        g.setProduction(alternate(alt1, alt2))
         return g
     
     @parser
     def prim_expr(self):
-        g = newParserRule()
         def alt1():
-            g_num = self.Number()
-            value = int(g_num.getText())
-            g.set_attr("value", value)
-            return g_num
+            return self.Number()
         
         def alt2():
-            g_expr = self.expression()
-            value = g_expr.get_attr("value")
-            g.set_attr("value", value)
-            return concat(self.LB(), g_expr, self.RB())
+            return concat(self.LB(), self.expression(), self.RB())
         
-        g_alt = alternate(alt1, alt2)
-        g_alt.visit()
-        g.setProduction(g_alt)
+        g = newParserRule()
+        g.setProduction(alternate(alt1, alt2))
         return g
     
     
@@ -91,4 +73,3 @@ code = "1+(2+3)"
 tree = myparser.parse(code)
 tree.eval()
 print(tree.getText())
-print(tree.get_attr("value"))
