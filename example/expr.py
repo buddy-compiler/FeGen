@@ -89,6 +89,6 @@ mylexer = mygram.lexer()
 myparser = mygram.parser(mylexer, "expression")
 code = "1+(2+3)"
 tree = myparser.parse(code)
-tree.eval()
+tree.__eval()
 print(tree.getText())
 print(tree.get_attr("value"))

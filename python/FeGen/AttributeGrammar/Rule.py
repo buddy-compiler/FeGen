@@ -23,6 +23,8 @@ class FeGenLexer:
         outputdir = os.path.join(os.path.dirname(__file__), self.module.__name__)
         self.lexer = lex.lex(module=self.module, debug=False, outputdir=outputdir)
 
+
+
     def input(self, src: str):
         self.lexer.input(src)
         token_list = []
@@ -41,10 +43,10 @@ class ConcreteSyntaxTree:
         self.root = root
         self.parser_locals_dict = parser_locals_dict
         self.lexer_locals_dict = lexer_locals_dict
-    
+        self.__eval()
 
 
-    def eval(self):
+    def __eval(self):
         ExecutionEngine.WHEN = "sema"
         for rule, local_dict in self.parser_locals_dict.items():
             rule_name = rule.name
@@ -282,7 +284,7 @@ class FeGenGrammar:
         attr_dict = self.plymodule.__dict__
         # insert tokens tuple
         attr_dict.update({"tokens": tuple([r.name for r in ruletrees_for_lex])})
-        gen = LexerProdGen()
+        gen = LexerProdGen(ruletrees_for_lex)
         # insert lex defination
         for lexRule in ruletrees_for_lex:
             name = lexRule.name
@@ -413,16 +415,16 @@ class Production:
         raise NotImplementedError()
 
 
-class ChatSet(Production):
+class RegularExpression(Production):
     """
-        char_set("A-Z") --> [A-Z]
+        regular_expr("[A-Z]") --> [A-Z]
     """
-    def __init__(self, charset: str):
+    def __init__(self, re_expr: str):
         super().__init__()
-        self.charset = charset
+        self.re_expr = re_expr
 
-def char_set(charset: str):
-    return ChatSet(charset)
+def regular_expr(re_expr: str):
+    return RegularExpression(re_expr)
 
 
 class OneOrMore(Production):
@@ -514,6 +516,14 @@ class Concat(Production):
 
 
 def concat(*args):
+    # replact regular expression keywords
+    if ExecutionEngine.WHEN == "lex":
+        args = list(args)
+        for idx, arg in enumerate(args):
+            if isinstance(arg, str):
+                for keyword in TerminalRule.re_keywords:
+                    arg = arg.replace(keyword, "\\" + keyword)
+                args[idx] = arg
     return Concat(*args)
 
 class Alternate(Production):
@@ -606,13 +616,34 @@ class ParserRule(Rule):
         return self.production.getText()
             
 class TerminalRule(Rule):
+    re_keywords = (
+        ".",
+        "*",
+        "+",
+        "?",
+        "{",
+        "}",
+        "^",
+        "$",
+        "(",
+        ")",
+        "[",
+        "]"
+    )
+
+
     def __init__(self, production = None, name = "UNKNOWN"):
         super().__init__(production, name)
 
     
     @execute_when("lex", "parse", "gen_ast")
     def setProduction(self, prod):
+        
+        if isinstance(prod, str):
+            for keyword in TerminalRule.re_keywords:
+                prod = prod.replace(keyword, "\\" + keyword)
         return super().setProduction(prod)
+            
         
         
     @execute_when("sema")

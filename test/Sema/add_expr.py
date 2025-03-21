@@ -9,19 +9,19 @@ class MyGrammar(FeGenGrammar):
     
     @lexer
     def Number(self):
-        g = newTerminalRule("[1-9][0-9]*|[0-9]")
+        g = newTerminalRule(regular_expr("[1-9][0-9]*|[0-9]"))
         print(g.text())
         return g
 
     @lexer
     def Identifier(self):
-        g = newTerminalRule("[a-zA-Z_][a-zA-Z0-9_]*")
+        g = newTerminalRule(regular_expr("[a-zA-Z_][a-zA-Z0-9_]*"))
         print(g.text())
         return g            
     
     @lexer
     def Add(self):
-        return newTerminalRule("\+")
+        return newTerminalRule("+")
     
 
     @parser
@@ -35,12 +35,12 @@ class MyGrammar(FeGenGrammar):
         g.set_attr("value", lhs + rhs)
         return g    
     
-
-mygram = MyGrammar()
-mylexer = mygram.lexer()
-myparser = mygram.parser(mylexer, "add_expr")
-code = "11+23"
-tree = myparser.parse(code)
-tree.eval()
-v = tree.get_attr("value")
-print(v)
+def test_add_expr():
+    mygram = MyGrammar()
+    mylexer = mygram.lexer()
+    myparser = mygram.parser(mylexer, "add_expr")
+    code = "11+23"
+    tree = myparser.parse(code)
+    v = tree.get_attr("value")
+    print(v)
+    assert v == eval(code)

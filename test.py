@@ -1,13 +1,6 @@
-from types import FunctionType
-import copy
-
-class test:
-    def __init__(self):
-        self.x = [i for i in range(10)]
+x = [i for i in range(10)]
+for idx, i in enumerate(x):
+    if i < 5:
+        x[idx] = idx + 10
         
-    def __getitem__(self, index):
-        return self.x[index]
-
-t = test()
-for i in t:
-    print(i)
+print(x)

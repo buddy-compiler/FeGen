@@ -27,7 +27,6 @@ def test_visit(capsys):
     lexer = mygram.lexer()
     parser = mygram.parser(lexer, "rule1")
     root = parser.parse("TEST")
-    root.eval()
     root.get_attr("test")
     captured = capsys.readouterr()
     assert captured.out == "visit rule1"

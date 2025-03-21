@@ -10,14 +10,14 @@ class MyGrammar(FeGenGrammar):
     @lexer
     def NUMBER(self):
         def alt1():
-            return char_set("[0-9]")
+            return regular_expr("[0-9]")
         def alt2():
-            return concat(char_set("[1-9]"), zero_or_more(char_set("[0-9]")))
+            return concat(regular_expr("[1-9]"), zero_or_more(regular_expr("[0-9]")))
         return newTerminalRule(alternate(alt2, alt1))
     
     @lexer
     def Identifier(self):
-        return newTerminalRule("[a-zA-Z_][a-zA-Z0-9_]*")
+        return newTerminalRule(regular_expr("[a-zA-Z_][a-zA-Z0-9_]*"))
     
     @parser
     def two_number(self):

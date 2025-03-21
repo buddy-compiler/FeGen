@@ -24,35 +24,42 @@ class BaseVisitor:
 class LexerProdGen(BaseVisitor):
     """Generate regular expression for terminal rule
     """
+    def __init__(self, rule_trees: List[TerminalRule]):
+        super().__init__()
+        self.rule_trees_dict = {rule.name : rule for rule in rule_trees}
+    
     def visit_TerminalRule(self, rule: TerminalRule):
-        return rule.name
+        rule_name = rule.name
+        actual_rule = self.rule_trees_dict.get(rule_name)
+        assert actual_rule is not None
+        return self.visit(actual_rule.production)
     
     def visit_str(self, s: str):
         return s
 
-    def visit_ChatSet(self, prod: ChatSet):
-        return prod.charset
+    def visit_RegularExpression(self, prod: RegularExpression):
+        return prod.re_expr
 
     def visit_Concat(self, prod: Concat):
         prod_exprs = [self.visit(p) for p in prod.rules]
         sur_prod_exprs = [f"({prod_expr})" for prod_expr in prod_exprs]
-        return R"{}".format("".join(sur_prod_exprs))
+        return "{}".format("".join(sur_prod_exprs))
     
     def visit_Alternate(self, prod: Alternate):
         prod_exprs = [self.visit(p) for p in prod.template_alts]
-        return R"{}".format("|".join(prod_exprs))
+        return "{}".format("|".join(prod_exprs))
     
     def visit_ZeroOrOne(self, prod: ZeroOrOne):
         prod_expr = self.visit(prod.prod)
-        return R"{}?".format(prod_expr)
+        return "{}?".format(prod_expr)
 
     def visit_ZeroOrMore(self, prod: ZeroOrMore):
         prod_expr = self.visit(prod.template_prod)
-        return R"{}*".format(prod_expr)
+        return "{}*".format(prod_expr)
         
     def visit_OneOrMore(self, prod: OneOrMore):
         prod_expr = self.visit(prod.template_prod)
-        return R"{}+".format(prod_expr)
+        return "{}+".format(prod_expr)
     
     
     

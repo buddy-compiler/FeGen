@@ -282,8 +282,8 @@ class MyGrammar(FeGenGrammar):
         """
             Number: '0-9' | '1-9' '0-9'*;
         """
-        no_zero = char_set("1-9")
-        all_number = char_set("0-9")
+        no_zero = regular_expr("1-9")
+        all_number = regular_expr("0-9")
         return TerminalRule(alternate(lambda: all_number, lambda: concat(no_zero, zero_or_more(all_number))))
     
     @lexer
@@ -298,8 +298,8 @@ class MyGrammar(FeGenGrammar):
         """
             Identifier: [a-zA-Z][a-zA-Z0-9]*;
         """
-        noDigit = char_set("a-zA-Z")
-        allcase = char_set("a-zA-Z0-9")
+        noDigit = regular_expr("a-zA-Z")
+        allcase = regular_expr("a-zA-Z0-9")
         # return TerminalRule(concat(noDigit, zero_or_more(allcase)))
         return TerminalRule(noDigit, zero_or_more(allcase))
 
@@ -313,7 +313,7 @@ class MyGrammar(FeGenGrammar):
     @skip
     @lexer
     def skip(self):
-        return TerminalRule(char_set("\n\t "))
+        return TerminalRule(regular_expr("\n\t "))
     
 if __name__ == "__main__":
     context = Context()

@@ -9,7 +9,7 @@ class MyGrammar(FeGenGrammar):
         
     @lexer
     def CHARSET(self):
-        return newTerminalRule(char_set("[0-9]"))
+        return newTerminalRule(regular_expr("[0-9]"))
 
     @lexer
     def ALTER(self):

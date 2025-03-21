@@ -6,9 +6,9 @@ _tabversion = '3.10'
 
 _lr_method = 'LALR'
 
-_lr_signature = 'numberNUMnumber : NUM'
+_lr_signature = 'numberDotnumber : Dot'
     
-_lr_action_items = {'NUM':([0,],[2,]),'$end':([1,2,],[0,-1,]),}
+_lr_action_items = {'Dot':([0,],[2,]),'$end':([1,2,],[0,-1,]),}
 
 _lr_action = {}
 for _k, _v in _lr_action_items.items():
@@ -27,5 +27,5 @@ for _k, _v in _lr_goto_items.items():
 del _lr_goto_items
 _lr_productions = [
   ("S' -> number","S'",1,None,None,None),
-  ('number -> NUM','number',1,'p_number','lex_def.py',23),
+  ('number -> Dot','number',1,'p_number','lex_def.py',26),
 ]

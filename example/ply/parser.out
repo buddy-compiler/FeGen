@@ -3,11 +3,11 @@ Created by PLY version 3.11 (http://www.dabeaz.com/ply)
 Grammar
 
 Rule 0     S' -> number
-Rule 1     number -> NUM
+Rule 1     number -> Dot
 
 Terminals, with rules where they appear
 
-NUM                  : 1
+Dot                  : 1
 error                : 
 
 Nonterminals, with rules where they appear
@@ -19,9 +19,9 @@ Parsing method: LALR
 state 0
 
     (0) S' -> . number
-    (1) number -> . NUM
+    (1) number -> . Dot
 
-    NUM             shift and go to state 2
+    Dot             shift and go to state 2
 
     number                         shift and go to state 1
 
@@ -33,7 +33,7 @@ state 1
 
 state 2
 
-    (1) number -> NUM .
+    (1) number -> Dot .
 
-    $end            reduce using rule 1 (number -> NUM .)
+    $end            reduce using rule 1 (number -> Dot .)
 
