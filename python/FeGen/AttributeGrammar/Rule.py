@@ -589,7 +589,8 @@ class ParserRule(Rule):
     
     @execute_when("sema")
     def get_attr(self, name: str):
-        self.visit()
+        if not self.visited:
+            self.visit()
         return self.attributes.get(name, None)
     
     @execute_when("sema")
@@ -598,6 +599,7 @@ class ParserRule(Rule):
             visit tree node 
         """
         self.visit_func()
+        self.visited = True
 
     @execute_when("sema")
     def getText(self):
