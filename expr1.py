@@ -9,19 +9,19 @@ class MyGrammar(FeGenGrammar):
     
     @lexer
     def Number(self):
-        g = newTerminalRule("[1-9][0-9]*|[0-9]")
+        g = newTerminalRule(regular_expr("[1-9][0-9]*|[0-9]"))
         print(g.text())
         return g
 
     @lexer
     def Identifier(self):
-        g = newTerminalRule("[a-zA-Z_][a-zA-Z0-9_]*")
+        g = newTerminalRule(regular_expr("[a-zA-Z_][a-zA-Z0-9_]*"))
         print(g.text())
         return g            
     
     @lexer
     def Add(self):
-        return newTerminalRule("\+")
+        return newTerminalRule("+")
     
     @parser
     def expression(self):
@@ -36,6 +36,7 @@ class MyGrammar(FeGenGrammar):
         g_rhs_elem = self.prim_expr()
         g_rhss = zero_or_more(concat(self.Add(), g_rhs_elem))
         for cat in g_rhss:
+            print("*"*99)
             print(cat[1].get_attr("v"))
         g.setProduction(concat(g_lhs, g_rhss))
         return g
@@ -54,8 +55,7 @@ class MyGrammar(FeGenGrammar):
 mygram = MyGrammar()
 mylexer = mygram.lexer()
 myparser = mygram.parser(mylexer, "expression")
-code = "1+2+3+4"
+code = "1"
 tree = myparser.parse(code)
-tree.eval()
-tree.visit()
 print(tree.getText())
+tree.visit()

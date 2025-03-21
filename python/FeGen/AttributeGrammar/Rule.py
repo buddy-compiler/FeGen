@@ -327,7 +327,7 @@ class FeGenGrammar:
 class ExecutionEngine:
     """Stores global variables
     """
-    WHEN: Literal['lex', 'parse', 'gen_ast' 'sema'] = "lex"
+    WHEN: Literal['lex', 'parse', 'gen_ast', 'sema'] = "lex"
     GRAMMAR_CLS = None
     # method that decorated by lexer
     lexerRuleFunc : Dict[str, Callable] = {}
@@ -404,9 +404,16 @@ def execute_when(*when):
     return decorator
 
 
+class ProductionSemaError(Exception):
+    def __init__(self, msg: str):
+        super().__init__(msg)
+        
+        
 class Production:
     def __init__(self):
         self.content = None
+        # Production may not exist if it is subprod of ZeroOrOne/ZeroOrMore production.
+        self._ifexist = True
 
     def getText(self):
         raise NotImplementedError()
@@ -414,6 +421,11 @@ class Production:
     def visit(self):
         raise NotImplementedError()
 
+    def get_attr(self, name: str):
+        return None
+
+    def set_attr(self, name: str, value: Any):
+        raise NotImplementedError()
 
 class RegularExpression(Production):
     """
@@ -446,8 +458,47 @@ class OneOrMore(Production):
 
 
     @execute_when("sema")
-    def __getitem__(self, index):
+    def __getitem__(self, index) -> Production:
+        if not self._ifexist:
+            raise IndexError("Production OneOrMore matches nothing.")
         return self.children[index]
+
+
+    @execute_when("sema")
+    def __iter__(self):
+        if not self._ifexist:
+            return iter([])
+        return iter(self.children)
+
+
+    @execute_when("sema")
+    def get_attr(self, name):
+        """Collect attributes from children, if attribute dose not exist in any child, get None.\n
+        For example, obj = OneOrMore{has children: [child1{has attr: v=1}, child2{has no attr}, child3{has attr: v=2}]}, then `obj.get_attr("v") == [1, None, 2]`.
+        Args:
+            name (_str_): Name of attribute.
+        """
+        if not self._ifexist:
+            return None
+        res = []
+        for child in self.children:
+            res.append(child.get_attr(name))
+        return res
+
+
+    @execute_when("sema")
+    def set_attr(self, name, value):
+        raise ProductionSemaError("OneOrMore instance should have no attributes.")
+
+
+    @execute_when("sema")
+    def visit(self):
+        """Visit all children of OneOrMore
+        """
+        if not self._ifexist:
+            return
+        for child in self.children:
+            child.visit()
 
 def one_or_more(prod: Production):
     return OneOrMore(prod)
@@ -460,7 +511,7 @@ class ZeroOrMore(Production):
     def __init__(self, prod: Production):
         super().__init__()
         self.template_prod = prod
-        self.children : List[Production] = [prod]
+        self.children : List[Production] = []
 
 
     @execute_when("sema")
@@ -470,8 +521,53 @@ class ZeroOrMore(Production):
 
 
     @execute_when("sema")
-    def __getitem__(self, index):
+    def __getitem__(self, index) -> Production:
+        """Return the index-th child
+
+        Args:
+            index (_int_): index of child
+        """
+        if not self._ifexist:
+            raise IndexError("Production ZeroOrMore matches nothing.")
         return self.children[index]
+
+
+    @execute_when("sema")
+    def __iter__(self):
+        if not self._ifexist:
+            return iter([])
+        return iter(self.children)
+
+
+    @execute_when("sema")
+    def get_attr(self, name):
+        """Collect attributes from children, if attribute dose not exist in any child, get None.\n
+        For example, obj = ZeroOrMore{has children: [child1{has attr: v=1}, child2{has no attr}, child3{has attr: v=2}]}, then `obj.get_attr("v") == [1, None, 2]`.
+
+        Args:
+            name (_str_): Name of attribute.
+        """
+        if not self._ifexist:
+            return None
+        res = []
+        for child in self.children:
+            res.append(child.get_attr(name))
+        return res
+
+    @execute_when("sema")
+    def set_attr(self, name, value):
+        raise ProductionSemaError("ZeroOrMore instance should have no attributes.")
+
+
+    @execute_when("sema")
+    def visit(self):
+        """Visit all children of ZeroOrMore
+        """
+        if not self._ifexist:
+            return
+        for child in self.children:
+            child.visit()
+
 
 def zero_or_more(prod: Production):
     return ZeroOrMore(prod)
@@ -485,12 +581,45 @@ class ZeroOrOne(Production):
         super().__init__()
         self.prod = prod
 
+
     @execute_when("sema")
     def getText(self):
         if self.prod.content is None:
             return ""
         return self.prod.getText()
-        
+    
+    
+    @execute_when("sema")
+    def get_attr(self, name):
+        """Get Attribute from child if exist, otherwise return None.
+        """
+        if not self._ifexist:
+            return None
+        return self.prod.get_attr(name)
+
+
+    @execute_when("sema")
+    def set_attr(self, name, value):
+        """Set Attribute for child if exist, otherwise will do nothing.
+        """
+        if not self._ifexist:
+            return
+        return self.prod.set_attr(name, value)
+
+
+    @execute_when("sema")
+    def exist(self):
+        return self._ifexist
+
+
+    @execute_when("sema")
+    def visit(self):
+        """Visit if exist
+        """
+        if not self._ifexist:
+            return
+        self.prod.visit()
+
 
 def zero_or_one(prod: Production):
     return ZeroOrOne(prod)
@@ -504,6 +633,7 @@ class Concat(Production):
         super().__init__()
         self.rules : List[Production] = args
 
+
     @execute_when("sema")
     def getText(self):
         texts = [rule.getText() for rule in self.rules]
@@ -511,8 +641,47 @@ class Concat(Production):
 
 
     @execute_when("sema")
-    def __getitem__(self, index):
+    def __getitem__(self, index) -> Production:
+        """Return the index-th child
+
+        Args:
+            index (_int_): index of child
+        """
+        if not self._ifexist:
+            raise IndexError("Production Concat matches nothing.")
         return self.rules[index]
+
+
+    @execute_when("sema")
+    def __iter__(self):
+        if not self._ifexist:
+            return iter([])
+        return iter(self.rules)
+
+
+    @execute_when("sema")
+    def set_attr(self, name, value):
+        raise ProductionSemaError("Concat instance should have no attributes.")
+    
+    
+    @execute_when("sema")
+    def get_attr(self, name):
+        """Concat have no attribute, return None
+        """
+        return None
+
+
+    @execute_when("sema")
+    def visit(self):
+        """Visit children of Concat
+        """
+        if not self._ifexist:
+            return
+        for r in self.rules:
+            # skip terminal
+            if isinstance(r, TerminalRule):
+                continue
+            r.visit()
 
 
 def concat(*args):
@@ -545,23 +714,79 @@ class Alternate(Production):
         # the actual matched sub prod
         self.idx : int = None
         self.alt_locals: Dict[str, Any] = {}
+        # set in ParserTreeBuilder.visit_Alternate
+        # the real matched prod
         self.prod : Production = None
-
+        
+        # if visited in sema time
+        self.visited = False
     
     @execute_when("get_ast", "sema")
     def visit(self):
+        """Execute function of matched alt branch
+        """
+        if not self._ifexist:
+            return
+                
         # _getframe(3): visit <-- ExecutableWarpper.__call__ <-- execute_when.decorator
         caller_frame : FrameType = sys._getframe(3)
+        if caller_frame.f_code.co_name == "get_attr":
+            # _getframe(4): visit <-- ExecutableWarpper.__call__ <-- execute_when.decorator <-- get_attr <-- ExecutableWarpper.__call__ <-- execute_when.decorator 
+            caller_frame = sys._getframe(6)
+            
         local_dict = caller_frame.f_locals
         alt_func_name = self.template_alt_funcs[self.idx].__name__
         sema_alt_func : FunctionType = local_dict[alt_func_name]
         sema_alt_func.__globals__.update(self.alt_locals)
-        return sema_alt_func()
+        if ExecutionEngine.WHEN == "gen_ast":
+            return sema_alt_func()
+        else:
+            sema_alt_func()
+            self.visited = True
+            return None
     
+    @execute_when("sema")
+    def get_actual_alt(self):
+        """Get actual matched rule.
+        """
+        if not self._ifexist:
+            return None
+        return self.prod
+
+
+    @execute_when("sema")
+    def get_actual_alt_index(self):
+        """Get actual matched alt function index.
+        """
+        if not self._ifexist:
+            return None
+        return self.idx
+
 
     @execute_when("sema")
     def getText(self):
         return self.prod.getText()
+    
+    
+    @execute_when("sema")
+    def set_attr(self, name, value):
+        """Set attribute to matched branch
+        """
+        if not self._ifexist:
+            return
+        return self.prod.set_attr(name, value)
+    
+    
+    @execute_when("sema")
+    def get_attr(self, name):
+        """Get attribuet from matched branch
+        """
+        if not self._ifexist:
+            return None
+        if not self.visited:
+            self.visit()
+        return self.prod.get_attr(name)
+    
 
 def alternate(*args):
     return Alternate(*args)
@@ -584,9 +809,9 @@ class ParserRule(Rule):
         super().__init__(production, name)
         self.attributes : Dict[str, Any] = {}
         self.visited = False
-        self.children : List[Rule] = []
         self.visit_func : FunctionType = None
-    
+        
+        
     @execute_when("parse", "gen_ast")
     def setProduction(self, prod):
         super().setProduction(prod)
@@ -599,6 +824,8 @@ class ParserRule(Rule):
     
     @execute_when("sema")
     def get_attr(self, name: str):
+        if not self._ifexist:
+            return None
         if not self.visited:
             self.visit()
         return self.attributes.get(name, None)
@@ -608,6 +835,8 @@ class ParserRule(Rule):
         """
             visit tree node 
         """
+        if not self._ifexist:
+            return
         self.visit_func()
         self.visited = True
 
@@ -644,11 +873,6 @@ class TerminalRule(Rule):
                 prod = prod.replace(keyword, "\\" + keyword)
         return super().setProduction(prod)
             
-        
-        
-    @execute_when("sema")
-    def text(self) -> str:
-        print("get text: not implemented.")
 
     @execute_when("sema")
     def getText(self):
@@ -656,6 +880,7 @@ class TerminalRule(Rule):
             return ""
         assert isinstance(self.content, str)
         return self.content
+
 
 
 @execute_when("parse", "gen_ast")

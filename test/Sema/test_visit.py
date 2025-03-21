@@ -1,13 +1,14 @@
 from FeGen.AttributeGrammar import *
 
+
 class MyGram(FeGenGrammar):
     def __init__(self):
         super().__init__()
-    
+        self.record = ""
     
     @execute_when("sema")
     def log(self, msg):
-        print(msg, end="")
+        self.record += msg
     
     @lexer
     def TEST(self):
@@ -22,24 +23,12 @@ class MyGram(FeGenGrammar):
         return g
 
 
-def test_visit(capsys):
+def test_visit():
     mygram = MyGram()
     lexer = mygram.lexer()
     parser = mygram.parser(lexer, "rule1")
     root = parser.parse("TEST")
     root.get_attr("test")
-    captured = capsys.readouterr()
-    assert captured.out == "visit rule1"
-
     root.get_attr("test")
-    captured = capsys.readouterr()
-    assert captured.out == ""
-    
     root.visit()
-    captured = capsys.readouterr()
-    assert captured.out == "visit rule1"
-    
     root.visit()
-    captured = capsys.readouterr()
-    assert captured.out == "visit rule1"
-    

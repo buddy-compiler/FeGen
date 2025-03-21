@@ -1,6 +1,13 @@
-x = [i for i in range(10)]
-for idx, i in enumerate(x):
-    if i < 5:
-        x[idx] = idx + 10
-        
-print(x)
+import ast
+
+code = """
+def test():
+    a = 100 + 200
+    print(a)
+"""
+
+tree = ast.parse(code)
+unparsed = ast.unparse(tree)
+new_code = compile(unparsed, filename="<code>", mode="exec")
+exec(new_code)
+test()

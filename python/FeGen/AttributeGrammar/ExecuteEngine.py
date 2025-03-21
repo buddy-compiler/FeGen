@@ -236,6 +236,8 @@ class ParserProdGen(BaseVisitor):
     
     
 class ParserTreeBuilder(BaseVisitor):
+    """Execute when: get_ast
+    """
     def __init__(self, grammar: FeGenGrammar):
         super().__init__()
         self.parser_locals_dict: Dict[ParserRule, Dict[str, Any]] = {}
@@ -245,6 +247,32 @@ class ParserTreeBuilder(BaseVisitor):
         
     def __call__(self, start_rule: ParserRule, data: dict):
         self.visit(start_rule, data)
+    
+    def __set_not_exist(self, rule: Production):
+        rule._ifexist = False
+        if isinstance(rule, ParserRule):
+            self.__set_not_exist(rule.production)
+        elif isinstance(rule, Concat):
+            for r in rule.rules:
+                self.__set_not_exist(r)
+        elif isinstance(rule, ZeroOrOne):
+            self.__set_not_exist(rule.prod)
+        elif isinstance(rule, ZeroOrMore):
+            for child in rule.children:
+                self.__set_not_exist(child)
+        elif isinstance(rule, OneOrMore):
+            for child in rule.children:
+                self.__set_not_exist(child)
+        else:
+            return
+        
+    def visit(self, rule: Production, data):
+        # if no data matches, set rule not exist
+        if data is None:
+            self.__set_not_exist(rule)
+            rule.content = None
+        else:
+            return super().visit(rule, data)
         
     def visit_ParserRule(self, rule: ParserRule, data: Tuple[str, Any]):
         rule.content = data
@@ -373,16 +401,19 @@ class ParserTreeBuilder(BaseVisitor):
         # visit child
         self.visit(prod.prod, data[2])
     
+    
     def visit_ZeroOrOne(self, prod: ZeroOrOne, data: Optional[Any]):
         prod.content = data
         if data is not None:
             self.visit(prod.prod, data)
-    
+            
+            
     def visit_ZeroOrMore(self, prod: ZeroOrMore, data: List[Any]):
         prod.content = data
         if len(data) == 0: # if prod match no content
             prod.template_prod.content = None
         else:
+            prod.children.append(prod.template_prod)
             # copy children
             for _ in range(len(data) - 1):
                 newchild = self.__copyParserTree(prod.template_prod)
