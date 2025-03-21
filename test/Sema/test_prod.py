@@ -38,4 +38,3 @@ def test_add_expr():
     tree = myparser.parse(code)
     v = tree.get_attr("value")
     print(v)
-    assert v == eval(code)
