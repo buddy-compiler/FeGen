@@ -1,35 +1,34 @@
 from FeGen.AttributeGrammar import *
 import logging
-
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 class MyGrammar(FeGenGrammar):
     def __init__(self):
         super().__init__()
-    
+
     @lexer
     def Number(self):
-        g = newTerminalRule("[1-9][0-9]*|[0-9]")
+        g = newTerminalRule(regular_expr("[1-9][0-9]*|[0-9]"))
         print(g.text())
         return g
 
     @lexer
     def Identifier(self):
-        g = newTerminalRule("[a-zA-Z_][a-zA-Z0-9_]*")
+        g = newTerminalRule(regular_expr("[a-zA-Z_][a-zA-Z0-9_]*"))
         print(g.text())
         return g            
     
     @lexer
     def Add(self):
-        return newTerminalRule("\+")
+        return newTerminalRule("+")
     
     @lexer
     def LB(self):
-        return newTerminalRule("\(")
+        return newTerminalRule("(")
     
     @lexer
     def RB(self):
-        return newTerminalRule("\)")
+        return newTerminalRule(")")
     
     
     @parser
@@ -89,6 +88,5 @@ mylexer = mygram.lexer()
 myparser = mygram.parser(mylexer, "expression")
 code = "1+(2+3)"
 tree = myparser.parse(code)
-tree.__eval()
 print(tree.getText())
 print(tree.get_attr("value"))

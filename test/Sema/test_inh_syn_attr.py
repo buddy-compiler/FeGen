@@ -1,5 +1,4 @@
 from FeGen.AttributeGrammar import *
-
 class MyGram(FeGenGrammar):
     def __init__(self):
         super().__init__()

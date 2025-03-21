@@ -43,10 +43,10 @@ class ConcreteSyntaxTree:
         self.root = root
         self.parser_locals_dict = parser_locals_dict
         self.lexer_locals_dict = lexer_locals_dict
-        self.__eval()
+        self._eval()
 
 
-    def __eval(self):
+    def _eval(self):
         ExecutionEngine.WHEN = "sema"
         for rule, local_dict in self.parser_locals_dict.items():
             rule_name = rule.name
@@ -885,6 +885,21 @@ class TerminalRule(Rule):
 
 @execute_when("parse", "gen_ast")
 def newParserRule(prod = None) -> ParserRule:
+    """Create ParserRule, can only used in parser function.
+
+    Args:
+        prod (_TerminalRule_, _ParserRule_, _Production_): Set the production of parser rule, Defaults to None, production can be set by calling TerminalRule.setProduction later.
+        `prod` can be return of parser or lexer method directly or EBNF create by function:
+        * concat
+        * alternate
+        * zero_or_one
+        * zero_or_more
+        * one_or_more
+        see document of method for more details.
+        
+    Returns:
+        ParserRule: _description_
+    """
     g = ParserRule(prod)
     g.name = sys._getframe(3).f_code.co_name
     return g
@@ -892,6 +907,22 @@ def newParserRule(prod = None) -> ParserRule:
 
 @execute_when("lex", "parse", "gen_ast")
 def newTerminalRule(prod = None) -> TerminalRule:
+    """Create TerminalRule, can only used in lexer function.
+
+    Args:
+        prod (_str_, _Production_): Set the production of terminal rule. Defaults to None, production can be set by calling TerminalRule.setProduction later.
+        If prod is instance of `str`, it matched string that equal to prod.
+        If prod is instance of `Production`, it will generate a regular expression, and matches string that match the regular pattern. Lexer production can be create by function:
+        * concat
+        * alternate
+        * zero_or_one
+        * zero_or_more
+        * one_or_more
+        * regular_expr: create regular expression
+        
+    Returns:
+        TerminalRule: return of lexer rule.
+    """
     g = TerminalRule(prod)
     g.name = sys._getframe(3).f_code.co_name
     return g
