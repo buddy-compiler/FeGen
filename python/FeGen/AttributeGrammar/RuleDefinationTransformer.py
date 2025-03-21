@@ -28,7 +28,7 @@ class Scope:
             return self.table[name]
         return None
 
-class LexParserConvertor(py_ast.NodeTransformer):
+class GrammarCodeConvertor(py_ast.NodeTransformer):
     """lex rules generate lex definations
     """
     def __init__(self, when: str, func_name: str, file: str, start_lineno: int, start_column: int, global_env: dict):
@@ -79,7 +79,7 @@ Remove statement: "{codestr}"
         except Exception as e:
             codestr = py_ast.unparse(stmt)
             traceinfo = traceback.format_exc()
-            logging.warning(f"""
+            logging.debug(f"""
 File "{self.file}", line {self.start_lineno}, col {self.start_column},
 Function "{self.func_name}",
 When generating {self.when}:

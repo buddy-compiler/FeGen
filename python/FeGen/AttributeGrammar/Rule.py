@@ -4,7 +4,7 @@ import inspect
 import copy
 import ast as py_ast
 import astunparse
-from .RuleDefinationTransformer import LexParserConvertor, ExecutionTimeError
+from .RuleDefinationTransformer import GrammarCodeConvertor, ExecutionTimeError
 import logging  
 import sys
 import ply.lex as lex
@@ -130,7 +130,6 @@ class FeGenParser:
         # so related ParserTree(s) will not generate.
         startrule, parser_locals_dict, lexer_locals_dict = FeGenParser.__capture_locals(self.start_func)
         # Complete Alternative / ZeroOrMore / OneOrMore / ZeroOrOne related ParserTree, including ParserTree Node and local variables generated when calling parse/lex function.
-        # TODO: Complete ZeroOrMore / OneOrMore / ZeroOrOne related local variables
         builder = ParserTreeBuilder(self.grammar)
         builder(startrule, raw_data)
         
@@ -195,6 +194,7 @@ class FeGenGrammar:
         source = '\n'.join(lines[num_decorators:])
         return source, num_decorators
 
+
     def __convert_functions_and_get_ruletree(self, when: Literal["lex", "parse"]) -> List["TerminalRule"] | List["ParserRule"]:
         """
             Execute to generate rule trees for lex/parse rule generating.
@@ -240,7 +240,7 @@ class FeGenGrammar:
             local_env = {"self": self_copy}
             
             # call transformer
-            convertor = LexParserConvertor(
+            convertor = GrammarCodeConvertor(
                 when=ExecutionEngine.WHEN, func_name=name, file=file, start_lineno=start_line, start_column=col_offset, global_env={**global_env, **local_env}
             )
             
@@ -741,8 +741,8 @@ class Alternate(Production):
         if ExecutionEngine.WHEN == "gen_ast":
             return sema_alt_func()
         else:
-            sema_alt_func()
             self.visited = True
+            sema_alt_func()
             return None
     
     @execute_when("sema")
@@ -837,8 +837,8 @@ class ParserRule(Rule):
         """
         if not self._ifexist:
             return
-        self.visit_func()
         self.visited = True
+        self.visit_func()
 
     @execute_when("sema")
     def getText(self):
