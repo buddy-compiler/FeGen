@@ -70,6 +70,10 @@ class ConcreteSyntaxTree:
     def get_attr(self, name: str) -> Any:
         return self.root.get_attr(name)
 
+
+    def visit(self):
+        self.root.visit()
+
 class FeGenParser:
     def __init__(self, module : ModuleType, lexer: FeGenLexer, grammar: "FeGenGrammar", start: str):
         self.module = module
@@ -125,7 +129,7 @@ class FeGenParser:
         startrule, parser_locals_dict, lexer_locals_dict = FeGenParser.__capture_locals(self.start_func)
         # Complete Alternative / ZeroOrMore / OneOrMore / ZeroOrOne related ParserTree, including ParserTree Node and local variables generated when calling parse/lex function.
         # TODO: Complete ZeroOrMore / OneOrMore / ZeroOrOne related local variables
-        builder = ParserTreeBuilder()
+        builder = ParserTreeBuilder(self.grammar)
         builder(startrule, raw_data)
         
         parser_locals_dict.update(builder.parser_locals_dict)
@@ -438,6 +442,11 @@ class OneOrMore(Production):
             texts = [child.getText() for child in self.children]
             return " ".join(texts)
 
+
+    @execute_when("sema")
+    def __getitem__(self, index):
+        return self.children[index]
+
 def one_or_more(prod: Production):
     return OneOrMore(prod)
 
@@ -451,10 +460,16 @@ class ZeroOrMore(Production):
         self.template_prod = prod
         self.children : List[Production] = [prod]
 
+
     @execute_when("sema")
     def getText(self):
         texts = [child.getText() for child in self.children]
         return " ".join(texts)
+
+
+    @execute_when("sema")
+    def __getitem__(self, index):
+        return self.children[index]
 
 def zero_or_more(prod: Production):
     return ZeroOrMore(prod)
@@ -473,6 +488,7 @@ class ZeroOrOne(Production):
         if self.prod.content is None:
             return ""
         return self.prod.getText()
+        
 
 def zero_or_one(prod: Production):
     return ZeroOrOne(prod)
@@ -491,6 +507,12 @@ class Concat(Production):
         texts = [rule.getText() for rule in self.rules]
         return " ".join(texts)
 
+
+    @execute_when("sema")
+    def __getitem__(self, index):
+        return self.rules[index]
+
+
 def concat(*args):
     return Concat(*args)
 
@@ -501,6 +523,7 @@ class Alternate(Production):
     def __init__(self, *args):
         super().__init__()
         self.template_alt_funcs : Tuple[FunctionType] = args
+        # ensure that alt functions have zero parameters
         for alt_func in self.template_alt_funcs:
             sig = inspect.signature(alt_func).parameters
             assert len(sig) == 0 and f"alt functions {alt_func.__name__} should not have any parameter"

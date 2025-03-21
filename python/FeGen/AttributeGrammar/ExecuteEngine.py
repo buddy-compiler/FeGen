@@ -229,10 +229,12 @@ class ParserProdGen(BaseVisitor):
     
     
 class ParserTreeBuilder(BaseVisitor):
-    def __init__(self):
+    def __init__(self, grammar: FeGenGrammar):
         super().__init__()
         self.parser_locals_dict: Dict[ParserRule, Dict[str, Any]] = {}
         self.lexer_locals_dict: Dict[TerminalRule, Dict[str, Any]] = {}
+        self.grammar = grammar
+        
         
     def __call__(self, start_rule: ParserRule, data: dict):
         self.visit(start_rule, data)
@@ -283,6 +285,68 @@ class ParserTreeBuilder(BaseVisitor):
         
         return (res, parser_locals_dict, lexer_locals_dict, locals_dict)
         
+    def __capture_locals(self, func: FunctionType):
+        """execute to capture local variables"""
+        parser_locals_dict: Dict[ParserRule, Dict[str, Any]] = {}
+        lexer_locals_dict: Dict[TerminalRule, Dict[str, Any]] = {}
+        
+        parser_rule_names = list(ExecutionEngine.parserRuleFunc.keys())
+        lexer_rule_names = list(ExecutionEngine.lexerRuleFunc.keys())
+        
+        def trace_function(frame: FrameType, event: str, arg):
+            if event == 'return':
+                func_name = frame.f_code.co_name
+                if func_name in parser_rule_names and isinstance(arg, ParserRule):
+                    parser_locals_dict.update({arg: frame.f_locals})
+                elif func_name in lexer_rule_names and isinstance(arg, TerminalRule):
+                    lexer_locals_dict.update({arg: frame.f_locals})
+            return trace_function
+        
+        
+        original_trace = sys.gettrace()
+        sys.settrace(trace_function)
+        try:
+            res = func() # execute
+        finally:
+            sys.settrace(original_trace)  # resume trace function
+        
+        return (res, parser_locals_dict, lexer_locals_dict)
+    
+    
+    def __copyParserTree(self, src: Production):
+        if isinstance(src, Concat):
+            src_children = src.rules
+            res_children = []
+            # copy children
+            for child in src_children:
+                res_child = self.__copyParserTree(child)
+                res_children.append(res_child)
+            return concat(*res_children)
+        elif isinstance(src, Alternate):
+            return alternate(*src.template_alt_funcs)
+        elif isinstance(src, ZeroOrOne):
+            return zero_or_one(self.__copyParserTree(src.prod))
+        elif isinstance(src, ZeroOrMore):
+            return zero_or_more(self.__copyParserTree(src.template_prod))
+        elif isinstance(src, OneOrMore):
+            return one_or_more(self.__copyParserTree(src.template_prod))
+        elif isinstance(src, ParserRule):
+            name = src.name
+            parser_func = getattr(self.grammar, name)
+            res, parser_locals_dict, lexer_locals_dict = self.__capture_locals(parser_func)
+            self.parser_locals_dict.update(parser_locals_dict)
+            self.lexer_locals_dict.update(lexer_locals_dict)
+            return res
+        elif isinstance(src, TerminalRule):
+            name = src.name
+            lex_func = getattr(self.grammar, name)
+            res, parser_locals_dict, lexer_locals_dict = self.__capture_locals(lex_func)
+            self.parser_locals_dict.update(parser_locals_dict)
+            self.lexer_locals_dict.update(lexer_locals_dict)
+            return res
+        else:
+            return copy.deepcopy(src)
+    
     
     def visit_Alternate(self, prod: Alternate, data: Tuple[int, str, Any]):
         prod.content = data
@@ -314,7 +378,7 @@ class ParserTreeBuilder(BaseVisitor):
         else:
             # copy children
             for _ in range(len(data) - 1):
-                newchild = copy.deepcopy(prod.template_prod)
+                newchild = self.__copyParserTree(prod.template_prod)
                 prod.children.append(newchild)
                 
             assert len(prod.children) == len(data)
@@ -326,7 +390,7 @@ class ParserTreeBuilder(BaseVisitor):
         prod.content = data
         # copy children
         for _ in range(len(data) - 1):
-            newchild = copy.deepcopy(prod.template_prod)
+            newchild = self.__copyParserTree(prod.template_prod)
             prod.children.append(newchild)
             
         assert len(prod.children) == len(data)
