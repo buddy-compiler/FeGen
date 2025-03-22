@@ -9,13 +9,11 @@ class MyGrammar(FeGenGrammar):
     @lexer
     def Number(self):
         g = newTerminalRule(regular_expr("[1-9][0-9]*|[0-9]"))
-        print(g.text())
         return g
 
     @lexer
     def Identifier(self):
         g = newTerminalRule(regular_expr("[a-zA-Z_][a-zA-Z0-9_]*"))
-        print(g.text())
         return g            
     
     @lexer
