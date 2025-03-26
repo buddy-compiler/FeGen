@@ -4,3 +4,4 @@ PLYModule/
 .pytest_cache/
 .VSCodeCounter/
 .example/
+.vscode/

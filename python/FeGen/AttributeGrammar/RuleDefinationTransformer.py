@@ -1,11 +1,14 @@
 from __future__ import annotations
 import ast as py_ast
 from typing import Tuple, Dict, List, Any, Type, Optional
-from types import FunctionType
+from types import FunctionType, FrameType
 import inspect
 import copy
 import logging
 import traceback
+import sys
+import os
+from contextlib import redirect_stdout, redirect_stderr
 
 
 class ExecutionTimeError(Exception):
@@ -66,7 +69,9 @@ class GrammarCodeConvertor(py_ast.NodeTransformer):
         """
         code  = compile(py_ast.Module(body=[stmt], type_ignores=[]), filename="fake_execution", mode="exec")
         try:
-            exec(code, self.get_globals(), self.get_locals())
+            with open(os.devnull, 'w') as null_stream:
+                with redirect_stdout(null_stream), redirect_stderr(null_stream):
+                    exec(code, self.get_globals(), self.get_locals())
             return True
         except ExecutionTimeError as e:
             codestr = py_ast.unparse(stmt)
@@ -126,9 +131,32 @@ It may caused by FeGen, or some error in code, exception details:
                 self.push()
                 parse_func, sema_func = self.visit_FunctionDef(stmt, copy.deepcopy(stmt))
                 self.pop()
-                flag = self.try_exec(parse_func)
-                assert flag
+                # append inner function to local dict
+                func_name = parse_node.name
                 parse_newbody.append(parse_func)
+                old = parse_node.body
+                parse_node.body = parse_newbody
+                code  = compile(py_ast.Module(body=[parse_node], type_ignores=[]), filename="fake_execution", mode="exec")
+                tmp_global = {**self.get_globals(), **self.get_locals()}
+                exec(code, tmp_global)
+                func_obj = tmp_global[func_name]
+                func_local = {}
+                def trace_function(frame: FrameType, event: str, arg):
+                    if event == 'return' and frame.f_code.co_name == func_name:
+                        func_local.update(frame.f_locals)
+                    return trace_function
+            
+            
+                original_trace = sys.gettrace()
+                sys.settrace(trace_function)
+                try:
+                    func_obj(tmp_global["self"]) # execute
+                finally:
+                    sys.settrace(original_trace)  # resume trace function
+                
+                self.current_scope.table.update(func_local)
+                parse_node.body = old
+                
                 sema_newbody.append(sema_func)
             elif isinstance(stmt, py_ast.Assign):
                 # declare variables defined in parse/lex as global variable 

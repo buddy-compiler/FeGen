@@ -11,11 +11,43 @@ import ply.lex as lex
 import ply.yacc as yacc
 import os
 from functools import partial
+import traceback
+from datetime import datetime
+
+def bind_function_to_source(func, code_file, start_line):
+    # 计算实际源文件中的行号
+    source_line = start_line
+
+    # 替换函数的代码对象
+    old_code = func.__code__
+    new_code = CodeType(
+        old_code.co_argcount,
+        old_code.co_posonlyargcount,  # Python 3.8+ 必需参数
+        old_code.co_kwonlyargcount,
+        old_code.co_nlocals,
+        old_code.co_stacksize,
+        old_code.co_flags,
+        old_code.co_code,
+        old_code.co_consts,
+        old_code.co_names,
+        old_code.co_varnames,
+        code_file,                    # 绑定到当前文件
+        old_code.co_name,
+        source_line,                 # 函数在源文件中的起始行号
+        old_code.co_lnotab,
+        old_code.co_freevars,
+        old_code.co_cellvars,
+    )
+    func.__code__ = new_code
+    return func
 
 class LexOrParseError(Exception):
     def __init__(self, msg: str):
         super().__init__(msg)
 
+class SemaError(Exception):
+    def __init__(self, msg: str):
+        super().__init__(msg)
 
 class FeGenLexer:
     def __init__(self, module):
@@ -48,9 +80,12 @@ class ConcreteSyntaxTree:
 
     def _eval(self):
         ExecutionEngine.WHEN = "sema"
+
+        total_lines = 0
         for rule, local_dict in self.parser_locals_dict.items():
             rule_name = rule.name
-            sema_code = ExecutionEngine.semaCodeForParseRule[rule_name]
+            sema_code_str = ExecutionEngine.semaCodeForParseRule[rule_name]
+            sema_code = compile(sema_code_str, self.grammar.sema_target_file, mode = "exec") 
             # get globals from lex/parse function
             lexorparse_func: FunctionType = getattr(self.grammar, rule_name)
             assert lexorparse_func is not None
@@ -60,6 +95,13 @@ class ConcreteSyntaxTree:
             exec(sema_code, sema_func_global)
             # `sema_func` has function parameter: `self`
             sema_func = sema_func_global[rule_name]
+            # bind function and source file
+            if self.grammar.do_generate_sema_file:
+                with open(self.grammar.sema_target_file, "a") as f:
+                    f.write(sema_code_str)
+                    f.write("\n\n\n")
+            bind_function_to_source(sema_func, self.grammar.sema_target_file, total_lines)
+            total_lines += sema_code_str.count("\n") + 3
             # bind parameter `self` with self.grammar
             rule.visit_func = partial(sema_func, self=self.grammar)
 
@@ -156,6 +198,42 @@ class FeGenGrammar:
         self.lexerobj = None
         self.parserobj = None
 
+        # create empty parser function file
+        self.parser_target_file = os.path.join(self.plymodule.__file__, "parser_functions.py")
+        self.do_generate_parser_file = self.__create_code_file(self.parser_target_file)
+        # create empty sema function file
+        self.sema_target_file = os.path.join(self.plymodule.__file__, "sema_functions.py")
+        self.do_generate_sema_file = self.__create_code_file(self.sema_target_file)
+        
+    def __create_code_file(self, file_path) -> bool:
+        """try to create file and return if the file needs to be regenerated
+        """
+        if os.path.exists(file_path):
+            filemtime = os.path.getmtime(file_path)
+            file_mdate = datetime.fromtimestamp(filemtime)
+            # get src modify time
+            self_cls = self.__class__
+            src_file_path = inspect.getsourcefile(self_cls)
+            if not src_file_path:
+                cls_name = self_cls.__name__
+                raise RuntimeError(f"Can not find class {cls_name} in file.")
+            src_mtime = os.path.getmtime(src_file_path)
+            src_mdate = datetime.fromtimestamp(src_mtime)
+            if file_mdate < src_mdate: 
+                # if code file mtime is early than src file, 
+                # clear code file and return True
+                with open(file_path, "w"):
+                    pass
+                return True
+            else:
+                # else return False
+                return False
+        else:
+            # if code file not exist, create file and return True 
+            with open(file_path, "w"):
+                    pass
+            return True
+        
     def __update_rules(self, self_copy):
         # declare temporary rules used in fake execution for rules generating
         def generate_template_lexer(name: str):
@@ -195,7 +273,7 @@ class FeGenGrammar:
         return source, num_decorators
 
 
-    def __convert_functions_and_get_ruletree(self, when: Literal["lex", "parse"]) -> List["TerminalRule"] | List["ParserRule"]:
+    def __convert_functions_and_get_ruletree(self, when: Literal["lex", "parse"], parser_target_file: str = None) -> List["TerminalRule"] | List["ParserRule"]:
         """
             Execute to generate rule trees for lex/parse rule generating.
             Productions of ruletree_for_parse will be folded.
@@ -210,9 +288,12 @@ class FeGenGrammar:
             folded ruletree:  one_or_more_a_or_b: {'a_or_b': None, 'a_or_b': None}
             
             Content of prod are folded for avoiding RecursionError which happened when generating parse rules
+            
+            target_file: For debug usage
         """
-
-    
+        
+        flag = parser_target_file is not None
+        
         if when == "lex":
             func_dict = ExecutionEngine.lexerRuleFunc
             code_dict = ExecutionEngine.semaCodeForLexRule
@@ -221,6 +302,7 @@ class FeGenGrammar:
             code_dict = ExecutionEngine.semaCodeForParseRule
 
         rule_trees = []
+        total_lines = 0
         for name, rule_def_method in func_dict.items():
             # collect file, line and col
             lines, start_line = inspect.getsourcelines(rule_def_method)
@@ -247,9 +329,18 @@ class FeGenGrammar:
             cvted_parseorlex_func_ast, cvted_sema_func_ast = convertor.split_parse_sema(parsed)
             
             cvted_parseorlex_func_code_str = astunparse.unparse(cvted_parseorlex_func_ast)
-            cvted_parseorlex_func_code = compile(cvted_parseorlex_func_code_str, f"{when}_rule_{name}", mode = "exec")
+            cvted_parseorlex_func_code_str = cvted_parseorlex_func_code_str.strip("\n")
+            target_file = parser_target_file if flag else f"lex_{name}"
+            cvted_parseorlex_func_code = compile(cvted_parseorlex_func_code_str, target_file, mode = "exec")
             exec(cvted_parseorlex_func_code, rule_def_method.__globals__, local_env)
             parseorlex_func: FunctionType = local_env[name]
+            if flag:
+                if self.do_generate_parser_file:
+                    with open(parser_target_file, "a") as f:
+                        f.write(cvted_parseorlex_func_code_str)
+                        f.write("\n\n\n")
+                bind_function_to_source(parseorlex_func, parser_target_file, total_lines)
+                total_lines = cvted_parseorlex_func_code_str.count("\n") + 3
             logging.debug(f"Code generated for {when} function {name}: " + cvted_parseorlex_func_code_str)
             
             # execute to generate folded ruletree
@@ -260,8 +351,8 @@ class FeGenGrammar:
             setattr(self, name, MethodType(parseorlex_func, self))
             
             cvted_sema_func_code_str = astunparse.unparse(cvted_sema_func_ast)
-            cvted_sema_func_code = compile(cvted_sema_func_code_str, f"sema_rule_{name}", mode = "exec") 
-            code_dict.update({name: cvted_sema_func_code})
+            cvted_sema_func_code_str = cvted_sema_func_code_str.strip("\n")
+            code_dict.update({name: cvted_sema_func_code_str})
             logging.debug(f"Code generated for sema function {name}: " + cvted_sema_func_code_str)
             
             
@@ -298,7 +389,7 @@ class FeGenGrammar:
             print(f"Illegal character '{t.value[0]}'")
             t.lexer.skip(1)
 
-        attr_dict.update({"t_error": t_error, "t_ignore": ' \t'})
+        attr_dict.update({"t_error": t_error, "t_ignore": ' \t\n'})
 
         # generate PLY lexer
         self.lexerobj = FeGenLexer(self.plymodule)
@@ -310,8 +401,10 @@ class FeGenGrammar:
         from .ExecuteEngine import ParserProdGen
         # process source code and generate code for lexer
         ExecutionEngine.WHEN = "parse"
+        
         # generated rule trees for parse rule generating
-        ruletrees_for_parse : List[ParserRule] = self.__convert_functions_and_get_ruletree(ExecutionEngine.WHEN)
+        # generate function code to function file
+        ruletrees_for_parse : List[ParserRule] = self.__convert_functions_and_get_ruletree(ExecutionEngine.WHEN, self.parser_target_file)
         
         # generate PLY function
         attr_dict = self.plymodule.__dict__
@@ -334,14 +427,14 @@ class ExecutionEngine:
     # method that decorated by parser
     parserRuleFunc : Dict[str, Callable] = {}
     # sema methods
-    semaCodeForLexRule : Dict[str, CodeType] = {}
-    semaCodeForParseRule : Dict[str, CodeType] = {}
+    semaCodeForLexRule : Dict[str, str] = {}
+    semaCodeForParseRule : Dict[str, str] = {}
 
 
 
 
 def parser(parser_rule_defination):
-    """An decorator to mark a function in a subclass of FeGenGrammar that defines a parse rule, ExecutionEngine.WHEN decides action of function.
+    """A decorator to mark a function in a subclass of FeGenGrammar that defines a parse rule, ExecutionEngine.WHEN decides action of function.
 
     Args:
         parser_rule_defination (FunctionType): lex defining function
@@ -355,7 +448,7 @@ def parser(parser_rule_defination):
 
 
 def lexer(lexer_rule_defination):
-    """An decorator to mark a function in a subclass of FeGenGrammar that defines a lex rule, ExecutionEngine.WHEN decides action of function.
+    """A decorator to mark a function in a subclass of FeGenGrammar that defines a lex rule, ExecutionEngine.WHEN decides action of function.
 
     Args:
         lexer_rule_defination (FunctionType): lex defining function
@@ -382,7 +475,12 @@ class ExecutableWarpper:
 
     def __call__(self, *args, **kwds):
         if ExecutionEngine.WHEN in self.whenexecute:
-            return self.executable(*args, **kwds)
+            try:
+                res = self.executable(*args, **kwds)
+                return res
+            except Exception as e:
+                logging.error("Error happend when executing {when} function: `{funcname}`.".format(when=self.whenexecute, funcname=self.executable.__name__))
+                raise e
         else:
             raise ExecutionTimeError(self.executable, "Function execute in wrong time, expected in {when} time, but now it is time to {time}".format(when=self.whenexecute, time=ExecutionEngine.WHEN))
 
@@ -828,7 +926,10 @@ class ParserRule(Rule):
             return None
         if not self.visited:
             self.visit()
-        return self.attributes.get(name, None)
+        attr = self.attributes.get(name, None)
+        if attr is None:
+            raise SemaError("parser rule `{rulename}` has no attribute {attrname}".format(rulename = self.name, attrname = name))
+        return attr
     
     @execute_when("sema")
     def visit(self):
