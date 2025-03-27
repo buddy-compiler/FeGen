@@ -470,38 +470,29 @@ def skip(skip_rule_defination):
     return warp
 
 
-class ExecutableWarpper:
-    def __init__(self, executable: FunctionType, whenexecute: Tuple[Literal['lex', 'parse', 'gen_ast', 'sema']]):
-        self.executable = executable
-        self.whenexecute = whenexecute
-
-    def __call__(self, *args, **kwds):
-        if ExecutionEngine.WHEN in self.whenexecute:
-            try:
-                res = self.executable(*args, **kwds)
-                return res
-            except Exception as e:
-                logging.error("Error happend when executing {when} function: `{funcname}`.".format(when=self.whenexecute, funcname=self.executable.__name__))
-                raise e
-        else:
-            raise ExecutionTimeError(self.executable, "Function execute in wrong time, expected in {when} time, but now it is time to {time}".format(when=self.whenexecute, time=ExecutionEngine.WHEN))
-
 
 def execute_when(*when):
     """mark function to execute at correct time
         when can be:
         * lex
         * parse
-        * gen_ast
+        * get_ast
         * sema
     """
+    legal_when = ("lex", "parse", "gen_ast", "sema")
     for item in when:
-        assert isinstance(item, str), "function `execute_when` accepts only string values."
-    def decorator(func):
-        f = lambda *args, **kwds: ExecutableWarpper(func, when)(*args, **kwds)
-        setattr(f, "execute_when", when)
-        return f
-    return decorator
+        assert isinstance(item, str), "Function `execute_when` accepts only string values."
+        assert item in legal_when, "Function `execute_when` accepts only strings from `{}`.".format(", ".join(legal_when))
+    def wrapper(func):
+        def check_when(*argc, **kwargs):
+            now = ExecutionEngine.WHEN
+            if now not in when:
+                msg = "Function {name} execute in wrong time: expected in `{times}`, but not is {now}.".format(name=func.__name__, times=", ".join(when), now=now)
+                raise Exception(msg)
+            else:
+                return func(*argc, **kwargs)
+        return check_when
+    return wrapper
 
 
 class ProductionSemaError(Exception):
@@ -828,11 +819,11 @@ class Alternate(Production):
         if not self._ifexist:
             return
                 
-        # _getframe(3): visit <-- ExecutableWarpper.__call__ <-- execute_when.decorator
-        caller_frame : FrameType = sys._getframe(3)
+        # _getframe(2): visit(this)(0) <-- check_when(1) <-- <caller>(2)
+        caller_frame : FrameType = sys._getframe(2)
         if caller_frame.f_code.co_name == "get_attr":
-            # _getframe(4): visit <-- ExecutableWarpper.__call__ <-- execute_when.decorator <-- get_attr <-- ExecutableWarpper.__call__ <-- execute_when.decorator 
-            caller_frame = sys._getframe(6)
+            # _getframe(4): visit(this)(0) <-- check_when(1) <-- get_attr(2) <-- check_when(3) <-- <caller>(4) 
+            caller_frame = sys._getframe(4)
             
         local_dict = caller_frame.f_locals
         alt_func_name = self.template_alt_funcs[self.idx].__name__
@@ -1004,7 +995,8 @@ def newParserRule(prod = None) -> ParserRule:
         ParserRule: _description_
     """
     g = ParserRule(prod)
-    g.name = sys._getframe(3).f_code.co_name
+    # 2: newParserRule(this)(0) <-- check_when(1) <-- <caller>(2)
+    g.name = sys._getframe(2).f_code.co_name
     return g
 
 
@@ -1027,7 +1019,8 @@ def newTerminalRule(prod = None) -> TerminalRule:
         TerminalRule: return of lexer rule.
     """
     g = TerminalRule(prod)
-    g.name = sys._getframe(3).f_code.co_name
+    # 2: newTerminalRule(this)(0) <-- check_when(1) <-- <caller>(2)
+    g.name = sys._getframe(2).f_code.co_name
     return g
     
     
