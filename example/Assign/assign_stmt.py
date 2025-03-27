@@ -9,7 +9,7 @@ from xdsl.printer import Printer
 from SymbolTable import Variable, Table
 
 
-logging.basicConfig(level=logging.DEBUG)
+# logging.basicConfig(level=logging.DEBUG)
 
 class AssignGrammar(FeGenGrammar):
     def __init__(self):
