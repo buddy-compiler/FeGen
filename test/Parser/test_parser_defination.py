@@ -41,21 +41,21 @@ class MyGrammar(FeGenGrammar):
     def opt_num(self):
         return newParserRule(zero_or_one(self.NUMBER()))
         
-        
-myg = MyGrammar()
-lexer = myg.lexer()
     
 def test_NUMBER():
     myg = MyGrammar()
     lexer = myg.lexer()
     tokens = lexer.input("100 200")
     print(tokens)
+    
 
 def test_Identifier():
     myg = MyGrammar()
     lexer = myg.lexer()
     tokens = lexer.input("a1 a2")
     print(tokens)
+
+
 
 def test_two_number():
     myg = MyGrammar()
@@ -108,3 +108,5 @@ def test_opt_num_1():
     parser = myg.parser(lexer, "opt_num")
     tree = parser.parse(" ")
     print(tree.getText())
+    
+    

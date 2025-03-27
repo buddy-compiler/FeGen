@@ -14,40 +14,16 @@ from functools import partial
 import traceback
 from datetime import datetime
 
-def bind_function_to_source(func, code_file, start_line):
-    # 计算实际源文件中的行号
-    source_line = start_line
-
-    # 替换函数的代码对象
-    old_code = func.__code__
-    new_code = CodeType(
-        old_code.co_argcount,
-        old_code.co_posonlyargcount,  # Python 3.8+ 必需参数
-        old_code.co_kwonlyargcount,
-        old_code.co_nlocals,
-        old_code.co_stacksize,
-        old_code.co_flags,
-        old_code.co_code,
-        old_code.co_consts,
-        old_code.co_names,
-        old_code.co_varnames,
-        code_file,                    # 绑定到当前文件
-        old_code.co_name,
-        source_line,                 # 函数在源文件中的起始行号
-        old_code.co_lnotab,
-        old_code.co_freevars,
-        old_code.co_cellvars,
-    )
-    func.__code__ = new_code
-    return func
 
 class LexOrParseError(Exception):
     def __init__(self, msg: str):
         super().__init__(msg)
 
+
 class SemaError(Exception):
     def __init__(self, msg: str):
         super().__init__(msg)
+
 
 class FeGenLexer:
     def __init__(self, module):
@@ -495,7 +471,7 @@ def skip(skip_rule_defination):
 
 
 class ExecutableWarpper:
-    def __init__(self, executable: FunctionType, whenexecute: Tuple[Literal['lex', 'parse', 'get_ast', 'sema']]):
+    def __init__(self, executable: FunctionType, whenexecute: Tuple[Literal['lex', 'parse', 'gen_ast', 'sema']]):
         self.executable = executable
         self.whenexecute = whenexecute
 
@@ -516,7 +492,7 @@ def execute_when(*when):
         when can be:
         * lex
         * parse
-        * get_ast
+        * gen_ast
         * sema
     """
     for item in when:
@@ -845,7 +821,7 @@ class Alternate(Production):
         # if visited in sema time
         self.visited = False
     
-    @execute_when("get_ast", "sema")
+    @execute_when("gen_ast", "sema")
     def visit(self):
         """Execute function of matched alt branch
         """
