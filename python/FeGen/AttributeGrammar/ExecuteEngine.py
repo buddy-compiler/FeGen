@@ -1,5 +1,5 @@
 from types import FunctionType
-from typing import Type, Dict, Optional
+from typing import Type, Dict, Optional, Set
 from .Rule import *
 
 class CodeGenError(Exception):
@@ -64,16 +64,16 @@ class LexerProdGen(BaseVisitor):
     
     
 class ParserProdGen(BaseVisitor):
-    def __init__(self, attr_dict):
+    def __init__(self):
         super().__init__()
-        self.attr_dict : Dict[str, Any] = attr_dict
-        
+        self.p_funcs : Dict[str, FunctionType] = {}
+        self.prods : List[Tuple[str, List[str], str]] = []
+        self.rules : Set[str] = set()
         
     def __call__(self, rule: ParserRule):
-        """insert p functions like
-        def p_{rulename}(p):
-            "rulename: p_name"
-            p[0] = p[1]
+        """
+        prod: rulename: p_name
+        p_funcs: p_rulename: template
         """
         assert isinstance(rule, ParserRule)
         self.processing_rule = rule
@@ -82,9 +82,9 @@ class ParserProdGen(BaseVisitor):
         p_name = self.visit(prod)
         def template(p):
             p[0] = (p_name, p[1])
-        template.__name__ = f"p_{rulename}"
-        template.__doc__ = f"{rulename} : {p_name}"
-        self.attr_dict.update({template.__name__: template}) 
+        
+        self.p_funcs.update({f"p_{rulename}": template})
+        self.prods.append((rulename, [p_name], f"p_{rulename}"))
     
     def visit_TerminalRule(self, prod: TerminalRule):
         return prod.name
@@ -103,7 +103,7 @@ class ParserProdGen(BaseVisitor):
         prod_children_names: List[str] = [self.visit(r) for r in prod.rules]
         rule_name = "__concat_" + "_".join(prod_children_names)
         # return if rule name is already existed
-        if rule_name in self.attr_dict:
+        if rule_name in self.rules:
             return rule_name
         # define function and insert to attr dict
         def template(p):
@@ -114,9 +114,9 @@ class ParserProdGen(BaseVisitor):
                 pi = p[i + 1]
                 d.append((child_name, pi))
             p[0] = tuple(d)
-        template.__name__ = f"p_{rule_name}"
-        template.__doc__ = "{rule_name} : {prod_children}".format(rule_name=rule_name, prod_children = " ".join(prod_children_names))
-        self.attr_dict.update({template.__name__: template})
+        self.p_funcs.update({f"p_{rule_name}": template})
+        self.prods.append((rule_name, prod_children_names, f"p_{rule_name}"))
+        self.rules.add(rule_name)
         return rule_name
     
     def visit_Alternate(self, prod: Alternate):
@@ -131,20 +131,21 @@ class ParserProdGen(BaseVisitor):
         alt_names = [self.visit(alt) for alt in prod.template_alts]
         rule_name = "__alt_" + "_".join(alt_names)
         # return rule_name if exist
-        if rule_name in self.attr_dict:
+        if rule_name in self.rules:
             return rule_name
-        
-        def generate_template(rule_name, idx, alt_name):
+
+        def gen_template(idx, alt_name):
             def template(p):
                 p[0] = (idx, alt_name, p[1])
-            template.__name__ = f"p_{rule_name}_{idx}"
-            template.__doc__ = f"{rule_name} : {alt_name}"
             return template
-        
         # traverse alt names and create functions
         for idx, alt_name in enumerate(alt_names):
-            template = generate_template(rule_name, idx, alt_name)
-            self.attr_dict.update({template.__name__: template})
+            alt_rule_name = f"p_{rule_name}_{idx}"
+            self.prods.append((rule_name, [alt_name], alt_rule_name))
+            
+            template = gen_template(idx, alt_name)
+            self.p_funcs.update({alt_rule_name: template})
+        self.rules.add(rule_name)
         return rule_name
     
     def visit_ZeroOrMore(self, prod: ZeroOrMore):
@@ -160,7 +161,7 @@ class ParserProdGen(BaseVisitor):
         child_name = self.visit(prod.template_prod)
         rule_name = f"__zero_or_more_{child_name}"
         # return rule_name if exist
-        if rule_name in self.attr_dict:
+        if rule_name in self.rules:
             return rule_name
         def template(p):
             p_len = len(p)
@@ -172,11 +173,11 @@ class ParserProdGen(BaseVisitor):
                 p[0] = p[1] + [p[2]]
             else:
                 assert False
-        template.__name__ = f"p_{rule_name}"
-        template.__doc__ = f"""{rule_name} : {rule_name} {child_name}
-                                           | {child_name}
-                                           |"""
-        self.attr_dict.update({template.__name__: template})
+        self.prods.append((rule_name, [rule_name, child_name], f"p_{rule_name}"))
+        self.prods.append((rule_name, [child_name], f"p_{rule_name}"))
+        self.prods.append((rule_name, [], f"p_{rule_name}"))
+        self.p_funcs.update({f"p_{rule_name}": template})
+        self.rules.add(rule_name)
         return rule_name
         
     def visit_OneOrMore(self, prod: OneOrMore):
@@ -190,7 +191,7 @@ class ParserProdGen(BaseVisitor):
         child_name = self.visit(prod.template_prod)
         rule_name = f"__one_or_more_{child_name}"
         # return rule_name if exist
-        if rule_name in self.attr_dict:
+        if rule_name in self.rules:
             return rule_name
         def template(p):
             p_len = len(p)
@@ -200,10 +201,10 @@ class ParserProdGen(BaseVisitor):
                 p[0] = p[1] + [p[2]]
             else:
                 assert False
-        template.__name__ = f"p_{rule_name}"
-        template.__doc__ = f"""{rule_name} : {rule_name} {child_name}
-                                           | {child_name}"""
-        self.attr_dict.update({template.__name__: template})
+        self.prods.append((rule_name, [rule_name, child_name], f"p_{rule_name}"))
+        self.prods.append((rule_name, [child_name], f"p_{rule_name}"))
+        self.p_funcs.update({f"p_{rule_name}": template})
+        self.rules.add(rule_name)
         return rule_name
     
 
@@ -218,7 +219,7 @@ class ParserProdGen(BaseVisitor):
         child_name = self.visit(prod.prod)
         rule_name = f"__zero_or_one_{child_name}"
         # return rule_name if exist
-        if rule_name in self.attr_dict:
+        if rule_name in self.rules:
             return rule_name
         def template(p):
             p_len = len(p)
@@ -228,10 +229,10 @@ class ParserProdGen(BaseVisitor):
                 p[0] = p[1]
             else:
                 assert False
-        template.__name__ = f"p_{rule_name}"
-        template.__doc__ = f"""{rule_name} : {child_name}
-                                           |"""
-        self.attr_dict.update({template.__name__: template})
+        self.prods.append((rule_name, [child_name], f"p_{rule_name}"))
+        self.prods.append((rule_name, [], f"p_{rule_name}"))
+        self.p_funcs.update({f"p_{rule_name}": template})
+        self.rules.add(rule_name)
         return rule_name
     
     
@@ -275,6 +276,9 @@ class ParserTreeBuilder(BaseVisitor):
             return super().visit(rule, data)
         
     def visit_ParserRule(self, rule: ParserRule, data: Tuple[str, Any]):
+        """
+        data = (p_name, p[1])
+        """
         rule.content = data
         assert len(data) == 2
         self.visit(rule.production, data[1])

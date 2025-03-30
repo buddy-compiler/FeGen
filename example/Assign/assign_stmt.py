@@ -225,9 +225,6 @@ class AssignGrammar(FeGenGrammar):
         return newTerminalRule(regular_expr("[1-9][0-9]+|[0-9]"))
 
 
-code = """
-a = 1 + 2
-"""
 
 code1 = """
 a = 1 + 2

@@ -1,4 +1,4 @@
-from typing import Type, List, Dict, Literal, Callable, Tuple, Any
+from typing import Type, List, Dict, Literal, Callable, Tuple, Any, Set
 from types import FunctionType, MethodType, ModuleType, FrameType, CodeType
 import inspect
 import copy
@@ -26,12 +26,13 @@ class SemaError(Exception):
 
 
 class FeGenLexer:
-    def __init__(self, module):
-        self.module = module
-        outputdir = self.module.__file__
-        self.lexer = lex.lex(module=self.module, debug=False, outputdir=outputdir)
-
-
+    def __init__(self, regular_expression: Dict[str, str]):
+        # self.module = module
+        # outputdir = self.module.__file__
+        # self.lexer = lex.lex(module=self.module, debug=False, outputdir=outputdir)
+        self.regular_expression = regular_expression
+        self.tokens = list(regular_expression.keys())
+        self.lexer = self.__build(self.regular_expression)
 
     def input(self, src: str):
         self.lexer.input(src)
@@ -42,6 +43,98 @@ class FeGenLexer:
                 break
             token_list.append(token)
         return token_list
+
+    def __build(self, regular_exprs: Dict[str, str]):
+        """generate ply lexer
+
+        Args:
+            regular_exprs (Dict[str, str]): Regular expr dict, for example:
+            ```
+            regular_exprs = {
+                "NUM": "[0-9]+",
+                "VAR": "var",
+                "ID": "[a-zA-Z_][a-zA-Z0-9]*",
+            } 
+            ```
+
+        Returns:
+            _ply.lex.Lex_: ply lex instance
+        """
+        from ply.lex import Lexer, PlyLogger, _form_master_re
+        import re
+        lextab = 'lextab'
+        stateinfo  = {'INITIAL': 'inclusive'}
+        lexobj = Lexer()
+        lexobj.optimize = False
+        errorlog = PlyLogger(sys.stderr)
+        tokens = tuple(regular_exprs.keys())
+        
+        lexobj.lextokens = set(tokens)
+        lexobj.lexliterals = ""
+        lexobj.lextokens_all = lexobj.lextokens | set(lexobj.lexliterals)
+        
+        regex_template = "(?P<t_{tokenname}>{prod})"
+        regexs = {
+            "INITIAL": [
+                regex_template.format(tokenname=name, prod=regular_exprs[name]) for name in tokens
+            ]
+        }
+        reflags = re.VERBOSE
+        ldict = {"t_{}".format(key): value for key, value in regular_exprs.items()}
+        
+        tokennames = {"t_{}".format(key): key for key in regular_exprs.keys()}
+        tokennames.update({"t_ignore": "ignore", "t_error": "error", "t_newline": "newline"})
+        
+        for state in regexs:
+            lexre, re_text, re_names = _form_master_re(regexs[state], reflags, ldict, tokennames)
+            lexobj.lexstatere[state] = lexre
+            lexobj.lexstateretext[state] = re_text
+            lexobj.lexstaterenames[state] = re_names
+
+        for state, stype in stateinfo.items():
+            if state != 'INITIAL' and stype == 'inclusive':
+                lexobj.lexstatere[state].extend(lexobj.lexstatere['INITIAL'])
+                lexobj.lexstateretext[state].extend(lexobj.lexstateretext['INITIAL'])
+                lexobj.lexstaterenames[state].extend(lexobj.lexstaterenames['INITIAL'])
+                
+        lexobj.lexstateinfo = stateinfo
+        lexobj.lexre = lexobj.lexstatere['INITIAL']
+        lexobj.lexretext = lexobj.lexstateretext['INITIAL']
+        lexobj.lexreflags = reflags
+
+        # Set up ignore variables
+        ignore = {'INITIAL': ' \t'}
+        lexobj.lexstateignore = ignore
+        lexobj.lexignore = lexobj.lexstateignore.get('INITIAL', '')
+
+        # Set up error functions
+        def t_error(t):
+            print("Illegal character '%s'" % t.value[0])
+            t.lexer.skip(1)
+        
+        errorf = {'INITIAL': t_error}
+        lexobj.lexstateerrorf = errorf
+        lexobj.lexerrorf = errorf.get('INITIAL', None)
+        if not lexobj.lexerrorf:
+            errorlog.warning('No t_error rule is defined')
+
+        # Set up eof functions
+        eoff = {}
+        lexobj.lexstateeoff = eoff
+        lexobj.lexeoff = eoff.get('INITIAL', None)
+        # Check state information for ignore and error rules
+        for s, stype in stateinfo.items():
+            if stype == 'exclusive':
+                if s not in errorf:
+                    errorlog.warning("No error rule is defined for exclusive state '%s'", s)
+                if s not in ignore and lexobj.lexignore:
+                    errorlog.warning("No ignore rule is defined for exclusive state '%s'", s)
+            elif stype == 'inclusive':
+                if s not in errorf:
+                    errorf[s] = errorf.get('INITIAL', None)
+                if s not in ignore:
+                    ignore[s] = ignore.get('INITIAL', '')
+        return lexobj
 
 
 
@@ -95,8 +188,10 @@ class ConcreteSyntaxTree:
         self.root.visit()
 
 class FeGenParser:
-    def __init__(self, module : ModuleType, lexer: FeGenLexer, grammar: "FeGenGrammar", start: str):
-        self.module = module
+    def __init__(self, p_funcs: Dict[str, FunctionType], prods: List[Tuple[str, List[str], str]], rules: Set[str], lexer: FeGenLexer, grammar: "FeGenGrammar", start: str):
+        self.p_funcs = p_funcs
+        self.prods = prods
+        self.rules = rules
         self.lexer = lexer
         self.grammar = grammar
         self.start = start
@@ -105,8 +200,7 @@ class FeGenParser:
             raise LexOrParseError("\n\n\nCan not find parse function for start rule: `{start}`, maybe you forgot to decorate `{start}` by `@parser`".format(start=start))
 
         # create yacc parser
-        outputdir = self.grammar.plymodule.__file__
-        self.__parser = yacc.yacc(module=self.module, debug=True, outputdir=outputdir, start=start)
+        self.__parser = self.__build(self.lexer.tokens, self.p_funcs, self.prods, self.start)
 
         
         
@@ -140,7 +234,7 @@ class FeGenParser:
         
     def parse(self, code):
         from .ExecuteEngine import ParserTreeBuilder
-        raw_data = self.__parser.parse(code)
+        raw_data = self.__parser.parse(code, lexer=self.lexer.lexer)
         ExecutionEngine.WHEN = "gen_ast"
         # Execute self.start_func, generate ParserTree Node,
         # At the same time, collect local variables generated when calling parse/lex function.
@@ -156,63 +250,114 @@ class FeGenParser:
         
         return ConcreteSyntaxTree(self.grammar, startrule, parser_locals_dict, lexer_locals_dict)
 
-        
+
+    def __build(self, terminals: List[str], p_funcs: Dict[str, FunctionType], prods: List[Tuple[str, List[str], str]], start: str):
+        """_generate ply parser_
+
+        Args:
+            terminals (List[str]): lexer tokens
+            p_funcs (Dict[str, FunctionType]): rule functions
+            prods (Dict[str, List[str]]): rule productions
+            start (str): start rule name
+            ```
+            terminals = ["NUM", "VAR", "ID"]
+            p_funcs = {
+                "p_num": p_num,
+                "p_var": p_var,
+                "p_id": p_id,
+                "p_module": p_module
+            }
+            prods = [
+                ("num", ["NUM"], "p_num"),
+                ("var": ["VAR"], "p_var"),
+                ("id": ["ID"], "p_id"),
+                ("module": ["num", "var", "id"], "p_module")
+            ]
+            ```
+        Returns:
+            _LRParser_: ply parser
+        """
+        from ply.yacc import Grammar, LRGeneratedTable, LRParser
+
+        g = Grammar(terminals)
+
+        for idx, t in enumerate(terminals):
+            g.set_precedence(t, "left", idx)
+
+        for name, prod, pfunc_name in prods:
+            g.add_production(name, prod, pfunc_name)
+
+        g.set_start(start)
+
+        # report error for undefined symbols
+        if len(g.undefined_symbols()) != 0:
+            raise Exception()
+
+        # report unused terminals
+        unused_terminals = g.unused_terminals()
+        print("unused terminals: ", unused_terminals)
+
+        # Find unused non-terminals
+        unused_rules = g.unused_rules()
+        print("unused rules: ", unused_rules)
+
+        # find unreachable
+        unreachable = g.find_unreachable()
+        for u in unreachable:
+            print('Symbol %r is unreachable', u)
+
+        # find infinite cycles
+        infinite = g.infinite_cycles()
+        for inf in infinite:
+            print('Infinite recursion detected for symbol %r', inf)
+
+        # find unused precedence
+        unused_prec = g.unused_precedence()
+        for term, assoc in unused_prec:
+            print('Precedence rule %r defined for unknown symbol %r', assoc, term)
+            
+        lr = LRGeneratedTable(g)
+
+        # Build the parser
+        lr.bind_callables(p_funcs)
+        parser = LRParser(lr, None)
+        return parser
+    
 class FeGenGrammar:
     """
         base class of all grammar class
     """    
-    def __init__(self):
-        self.plymodule = ModuleType("PLYModule", "Generated by FeGenGrammar")
+    def __init__(self, output_dir_name = ".fegen"):
+        import hashlib
+        self.output_dir_name = output_dir_name
         # mkdir for plymodule
-        src_path = os.path.dirname(inspect.getsourcefile(self.__class__))
-        outputdir = os.path.join(src_path, self.plymodule.__name__)
+        # calc hash code of src file
+        src_filepath = inspect.getsourcefile(self.__class__)
+        if src_filepath is None:
+            raise LexOrParseError("Can not find filepath of class: `{}`".format(self.__class__))
+        chunksize = 8192
+        sha1_func = hashlib.sha1()
+        with open(src_filepath, "rb") as f:
+            for chunk in iter(lambda: f.read(chunksize), b""):
+                sha1_func.update(chunk)
+        hash_code = sha1_func.hexdigest()
+        
         # set attr for plymodule
-        setattr(self.plymodule, "__file__", outputdir)
-        setattr(self.plymodule, "__package__", "PLYModule")
+        src_dir = os.path.dirname(src_filepath)
+        outputdir = os.path.join(src_dir, self.output_dir_name, hash_code)
+        self.do_generate = False
         if not os.path.exists(outputdir):
-            os.mkdir(outputdir)
+            self.do_generate = True
+            os.makedirs(outputdir, exist_ok=True)
         # initialize lexer and parser
         self.lexerobj = None
         self.parserobj = None
 
-        # create empty parser function file
-        self.lexer_target_file = os.path.join(self.plymodule.__file__, "lexer_functions.py")
-        self.do_generate_lexer_file = self.__create_code_file(self.lexer_target_file)
-        self.parser_target_file = os.path.join(self.plymodule.__file__, "parser_functions.py")
-        self.do_generate_parser_file = self.__create_code_file(self.parser_target_file)
-        # create empty sema function file
-        self.sema_target_file = os.path.join(self.plymodule.__file__, "sema_functions.py")
-        self.do_generate_sema_file = self.__create_code_file(self.sema_target_file)
+        # create empty lex, parser and sema function file
+        self.lexer_target_file = os.path.join(outputdir, "lexer_functions.py")
+        self.parser_target_file = os.path.join(outputdir, "parser_functions.py")
+        self.sema_target_file = os.path.join(outputdir, "sema_functions.py")
         
-        
-    def __create_code_file(self, file_path) -> bool:
-        """try to create file and return if the file needs to be regenerated
-        """
-        if os.path.exists(file_path):
-            filemtime = os.path.getmtime(file_path)
-            file_mdate = datetime.fromtimestamp(filemtime)
-            # get src modify time
-            self_cls = self.__class__
-            src_file_path = inspect.getsourcefile(self_cls)
-            if not src_file_path:
-                cls_name = self_cls.__name__
-                raise RuntimeError(f"Can not find class {cls_name} in file.")
-            src_mtime = os.path.getmtime(src_file_path)
-            src_mdate = datetime.fromtimestamp(src_mtime)
-            if file_mdate < src_mdate: 
-                # if code file mtime is early than src file, 
-                # clear code file and return True
-                with open(file_path, "w"):
-                    pass
-                return True
-            else:
-                # else return False
-                return False
-        else:
-            # if code file not exist, create file and return True 
-            with open(file_path, "w"):
-                    pass
-            return True
         
     def __update_rules(self, self_copy):
         # declare temporary rules used in fake execution for rules generating
@@ -318,7 +463,7 @@ class FeGenGrammar:
         
         # handle lexer / parser function
         # dump lex/parse function codes
-        if (when == "lex" and self.do_generate_lexer_file) or (when == "parse" and self.do_generate_parser_file):
+        if when in ("lex", "parse") and self.do_generate:
             with open(target_file, "a") as f:
                 for func_code in lex_parser_codestr_dict.values():
                     f.write(func_code)
@@ -351,7 +496,7 @@ class FeGenGrammar:
         
         
         # handle sema function
-        if self.do_generate_sema_file:
+        if self.do_generate:
             # dump sema function codes
             with open(self.sema_target_file, "a") as f:
                 for func_code in sema_codestr_dict.values():
@@ -374,27 +519,21 @@ class FeGenGrammar:
         # generated rule trees for parse rule generating
         ruletrees_for_lex : List[TerminalRule] = self.__convert_functions_and_get_ruletree(ExecutionEngine.WHEN)
         
-        attr_dict = self.plymodule.__dict__
-        # insert tokens tuple
-        attr_dict.update({"tokens": tuple([r.name for r in ruletrees_for_lex])})
+        
         gen = LexerProdGen(ruletrees_for_lex)
+        
         # insert lex defination
+        regular_expressions = {}
         for lexRule in ruletrees_for_lex:
             name = lexRule.name
             prod = lexRule.production
             lexprod = gen(prod)
             logging.debug(f"Regular expression for rule '{name}' is {lexprod}")
-            attr_dict.update({"t_" + name:  lexprod})
+            regular_expressions.update({name:  lexprod})
         # insert ignore and skip
         # TODO: skip
-        def t_error(t):
-            print(f"Illegal character '{t.value[0]}'")
-            t.lexer.skip(1)
-
-        attr_dict.update({"t_error": t_error, "t_ignore": ' \t\n'})
-
         # generate PLY lexer
-        self.lexerobj = FeGenLexer(self.plymodule)
+        self.lexerobj = FeGenLexer(regular_expressions)
         return self.lexerobj
     
     def parser(self, lexer: FeGenLexer, start = None) -> FeGenParser:
@@ -409,12 +548,13 @@ class FeGenGrammar:
         ruletrees_for_parse : List[ParserRule] = self.__convert_functions_and_get_ruletree(ExecutionEngine.WHEN)
         
         # generate PLY function
-        attr_dict = self.plymodule.__dict__
-        gen = ParserProdGen(attr_dict)
+        gen = ParserProdGen()
         for rule in ruletrees_for_parse:
             gen(rule)
-
-        self.parserobj = FeGenParser(self.plymodule, lexer, self, start)
+        p_funcs = gen.p_funcs
+        prods = gen.prods
+        rules = gen.rules
+        self.parserobj = FeGenParser(p_funcs, prods, rules, lexer, self, start)
         return self.parserobj
 
 
