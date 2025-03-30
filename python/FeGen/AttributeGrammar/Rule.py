@@ -26,13 +26,13 @@ class SemaError(Exception):
 
 
 class FeGenLexer:
-    def __init__(self, regular_expression: Dict[str, str]):
+    def __init__(self, regular_expression: Dict[str, str], ignore_re: str):
         # self.module = module
         # outputdir = self.module.__file__
         # self.lexer = lex.lex(module=self.module, debug=False, outputdir=outputdir)
         self.regular_expression = regular_expression
         self.tokens = list(regular_expression.keys())
-        self.lexer = self.__build(self.regular_expression)
+        self.lexer = self.__build(self.regular_expression, ignore_re)
 
     def input(self, src: str):
         self.lexer.input(src)
@@ -44,7 +44,7 @@ class FeGenLexer:
             token_list.append(token)
         return token_list
 
-    def __build(self, regular_exprs: Dict[str, str]):
+    def __build(self, regular_exprs: Dict[str, str], ignore_re: str):
         """generate ply lexer
 
         Args:
@@ -83,7 +83,7 @@ class FeGenLexer:
         ldict = {"t_{}".format(key): value for key, value in regular_exprs.items()}
         
         tokennames = {"t_{}".format(key): key for key in regular_exprs.keys()}
-        tokennames.update({"t_ignore": "ignore", "t_error": "error", "t_newline": "newline"})
+        tokennames.update({"t_ignore": "ignore", "t_error": "error"})
         
         for state in regexs:
             lexre, re_text, re_names = _form_master_re(regexs[state], reflags, ldict, tokennames)
@@ -103,7 +103,7 @@ class FeGenLexer:
         lexobj.lexreflags = reflags
 
         # Set up ignore variables
-        ignore = {'INITIAL': ' \t'}
+        ignore = {'INITIAL': ignore_re}
         lexobj.lexstateignore = ignore
         lexobj.lexignore = lexobj.lexstateignore.get('INITIAL', '')
 
@@ -295,26 +295,28 @@ class FeGenParser:
 
         # report unused terminals
         unused_terminals = g.unused_terminals()
-        print("unused terminals: ", unused_terminals)
+        if unused_terminals:
+            logging.warning(f"unused terminals: {unused_terminals}")
 
         # Find unused non-terminals
         unused_rules = g.unused_rules()
-        print("unused rules: ", unused_rules)
+        if unused_rules:
+            logging.warning(f"unused rules: {unused_rules}")
 
         # find unreachable
         unreachable = g.find_unreachable()
         for u in unreachable:
-            print('Symbol %r is unreachable', u)
+            logging.warning('Symbol {} is unreachable'.format(u))
 
         # find infinite cycles
         infinite = g.infinite_cycles()
         for inf in infinite:
-            print('Infinite recursion detected for symbol %r', inf)
+            logging.warning('Infinite recursion detected for symbol {}'.format(inf))
 
         # find unused precedence
         unused_prec = g.unused_precedence()
         for term, assoc in unused_prec:
-            print('Precedence rule %r defined for unknown symbol %r', assoc, term)
+            logging.warning('Precedence rule {assoc} defined for unknown symbol {term}}'.format(assoc=assoc, term=term))
             
         lr = LRGeneratedTable(g)
 
@@ -530,12 +532,13 @@ class FeGenGrammar:
             lexprod = gen(prod)
             logging.debug(f"Regular expression for rule '{name}' is {lexprod}")
             regular_expressions.update({name:  lexprod})
-        # insert ignore and skip
-        # TODO: skip
+        # insert skip
+        ignore_re = self.skip()
         # generate PLY lexer
-        self.lexerobj = FeGenLexer(regular_expressions)
+        self.lexerobj = FeGenLexer(regular_expressions, ignore_re)
         return self.lexerobj
-    
+
+
     def parser(self, lexer: FeGenLexer, start = None) -> FeGenParser:
         if self.parserobj is not None:
             return self.parserobj
@@ -558,6 +561,15 @@ class FeGenGrammar:
         return self.parserobj
 
 
+    def skip(self):
+        """lex rule to skip
+
+        Returns:
+            _str_: regular expression to skip.
+        """
+        return " \t\n" 
+
+        
 
 class ExecutionEngine:
     """Stores global variables
