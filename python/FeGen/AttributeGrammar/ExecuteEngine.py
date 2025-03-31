@@ -82,6 +82,7 @@ class ParserProdGen(BaseVisitor):
         p_name = self.visit(prod)
         def template(p):
             p[0] = (p_name, p[1])
+            logging.debug("{}: {}".format(rulename, p[0]))
         
         self.p_funcs.update({f"p_{rulename}": template})
         self.prods.append((rulename, [p_name], f"p_{rulename}"))
@@ -114,6 +115,7 @@ class ParserProdGen(BaseVisitor):
                 pi = p[i + 1]
                 d.append((child_name, pi))
             p[0] = tuple(d)
+            logging.debug("{}: {}".format(rule_name, p[0]))
         self.p_funcs.update({f"p_{rule_name}": template})
         self.prods.append((rule_name, prod_children_names, f"p_{rule_name}"))
         self.rules.add(rule_name)
@@ -137,6 +139,7 @@ class ParserProdGen(BaseVisitor):
         def gen_template(idx, alt_name):
             def template(p):
                 p[0] = (idx, alt_name, p[1])
+                logging.debug("{}: {}".format(rule_name, p[0]))
             return template
         # traverse alt names and create functions
         for idx, alt_name in enumerate(alt_names):
@@ -173,6 +176,8 @@ class ParserProdGen(BaseVisitor):
                 p[0] = p[1] + [p[2]]
             else:
                 assert False
+            logging.debug("{}: {}".format(rule_name, p[0]))
+            
         self.prods.append((rule_name, [rule_name, child_name], f"p_{rule_name}"))
         self.prods.append((rule_name, [child_name], f"p_{rule_name}"))
         self.prods.append((rule_name, [], f"p_{rule_name}"))
@@ -201,6 +206,8 @@ class ParserProdGen(BaseVisitor):
                 p[0] = p[1] + [p[2]]
             else:
                 assert False
+            logging.debug("{}: {}".format(rule_name, p[0]))
+            
         self.prods.append((rule_name, [rule_name, child_name], f"p_{rule_name}"))
         self.prods.append((rule_name, [child_name], f"p_{rule_name}"))
         self.p_funcs.update({f"p_{rule_name}": template})
@@ -229,6 +236,8 @@ class ParserProdGen(BaseVisitor):
                 p[0] = p[1]
             else:
                 assert False
+            logging.debug("{}: {}".format(rule_name, p[0]))
+            
         self.prods.append((rule_name, [child_name], f"p_{rule_name}"))
         self.prods.append((rule_name, [], f"p_{rule_name}"))
         self.p_funcs.update({f"p_{rule_name}": template})

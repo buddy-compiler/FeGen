@@ -67,6 +67,7 @@ class GrammarCodeConvertor(py_ast.NodeTransformer):
         """try execute stmt, return True if success, else return False
         
         """
+        from .Rule import ProdError
         code  = compile(py_ast.Module(body=[stmt], type_ignores=[]), filename="fake_execution", mode="exec")
         try:
             with open(os.devnull, 'w') as null_stream:
@@ -81,6 +82,8 @@ Function "{self.func_name}",
 When generating {self.when}:
 Remove statement: "{codestr}"
                         """)
+        except ProdError as e:
+            raise e
         except Exception as e:
             codestr = py_ast.unparse(stmt)
             traceinfo = traceback.format_exc()

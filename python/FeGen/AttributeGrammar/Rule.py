@@ -277,6 +277,18 @@ class FeGenParser:
         Returns:
             _LRParser_: ply parser
         """
+        # check inputs
+        assert isinstance(p_funcs, dict)
+        assert isinstance(prods, (list, tuple))
+        for p in prods:
+            assert isinstance(p, (list, tuple))
+            func_name = p[2]
+            assert isinstance(func_name, str)
+            assert func_name in p_funcs
+        rulenames = {p[0] for p in prods}
+        assert start in rulenames
+        
+        
         from ply.yacc import Grammar, LRGeneratedTable, LRParser
 
         g = Grammar(terminals)
@@ -560,6 +572,10 @@ class FeGenGrammar:
         self.parserobj = FeGenParser(p_funcs, prods, rules, lexer, self, start)
         return self.parserobj
 
+    def parser_error_handler(self, p):
+        if p is None:
+            return
+        print(f"Syntax error at {p.value}")
 
     def skip(self):
         """lex rule to skip
@@ -670,6 +686,9 @@ class Production:
     def set_attr(self, name: str, value: Any):
         raise NotImplementedError()
 
+    def exist(self):
+        return self._ifexist
+
 class RegularExpression(Production):
     """
         regular_expr("[A-Z]") --> [A-Z]
@@ -681,6 +700,15 @@ class RegularExpression(Production):
 def regular_expr(re_expr: str):
     return RegularExpression(re_expr)
 
+
+class ProdError(Exception):
+    def __init__(self, msg):
+        super().__init__(msg)
+
+def check_prod_args(*args):
+    for prod in args:
+        if not isinstance(prod, (str, Production)):
+            raise ProdError("Unexpected type: {}".format(prod.__class__))
 
 class OneOrMore(Production):
     """
@@ -743,8 +771,12 @@ class OneOrMore(Production):
         for child in self.children:
             child.visit()
 
-def one_or_more(prod: Production):
-    return OneOrMore(prod)
+def one_or_more(*args):
+    check_prod_args(*args)
+    if len(args) == 1:
+        return OneOrMore(args[0])
+    else:
+        return OneOrMore(*args)
 
 
 class ZeroOrMore(Production):
@@ -812,8 +844,12 @@ class ZeroOrMore(Production):
             child.visit()
 
 
-def zero_or_more(prod: Production):
-    return ZeroOrMore(prod)
+def zero_or_more(*args):
+    check_prod_args(*args)
+    if len(args) == 1:
+        return ZeroOrMore(args[0])
+    else:
+        return ZeroOrMore(concat(*args))
 
 
 class ZeroOrOne(Production):
@@ -864,8 +900,12 @@ class ZeroOrOne(Production):
         self.prod.visit()
 
 
-def zero_or_one(prod: Production):
-    return ZeroOrOne(prod)
+def zero_or_one(*args):
+    check_prod_args(*args)
+    if len(args) == 1:
+        return ZeroOrOne(args[0])
+    else:
+        return ZeroOrMore(concat(*args))
 
 
 class Concat(Production):
@@ -928,6 +968,7 @@ class Concat(Production):
 
 
 def concat(*args):
+    check_prod_args(*args)
     # replact regular expression keywords
     if ExecutionEngine.WHEN == "lex":
         args = list(args)
@@ -1032,6 +1073,9 @@ class Alternate(Production):
     
 
 def alternate(*args):
+    """create alternative rule
+        args: alt functions
+    """
     return Alternate(*args)
 
 
@@ -1041,11 +1085,15 @@ class Rule(Production):
         super().__init__()
         self.production = None
         self.name = name
-        self.setProduction(production)
+        if production is not None:
+            self.setProduction(production)
         
-    def setProduction(self, prod):
-        self.production = prod
-
+    def setProduction(self, *args):
+        check_prod_args(*args)
+        if len(args) == 1:
+            self.production = args[0]
+        else:
+            self.production = concat(*args)
 
 class ParserRule(Rule):
     def __init__(self, production = None, name = "UNKNOWN"):
@@ -1056,8 +1104,8 @@ class ParserRule(Rule):
         
         
     @execute_when("parse", "gen_ast")
-    def setProduction(self, prod):
-        super().setProduction(prod)
+    def setProduction(self, *args):
+        super().setProduction(*args)
 
     
     @execute_when("sema")
@@ -1112,12 +1160,16 @@ class TerminalRule(Rule):
 
     
     @execute_when("lex", "parse", "gen_ast")
-    def setProduction(self, prod):
-        
-        if isinstance(prod, str):
-            for keyword in TerminalRule.re_keywords:
-                prod = prod.replace(keyword, "\\" + keyword)
-        return super().setProduction(prod)
+    def setProduction(self, *args):
+        check_prod_args(*args)
+        args = list(args)
+        for i in range(len(args)):
+            prod = args[i]
+            if isinstance(prod, str):
+                for keyword in TerminalRule.re_keywords:
+                    prod = prod.replace(keyword, "\\" + keyword)
+                args[i] = prod
+        return super().setProduction(*args)
             
 
     @execute_when("sema")
