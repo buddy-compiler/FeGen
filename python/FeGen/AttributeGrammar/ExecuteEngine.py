@@ -309,8 +309,8 @@ class ParserTreeBuilder(BaseVisitor):
         locals_dict : Dict[str, Any] = {}
         actual_func_name = func.__name__
         
-        parser_rule_names = list(ExecutionEngine.parserRuleFunc.keys())
-        lexer_rule_names = list(ExecutionEngine.lexerRuleFunc.keys())
+        parser_rule_names = list(FeGenGrammar.parserRuleFunc.keys())
+        lexer_rule_names = list(FeGenGrammar.lexerRuleFunc.keys())
         
         def trace_function(frame: FrameType, event: str, arg):
             if event == 'return':
@@ -338,8 +338,8 @@ class ParserTreeBuilder(BaseVisitor):
         parser_locals_dict: Dict[ParserRule, Dict[str, Any]] = {}
         lexer_locals_dict: Dict[TerminalRule, Dict[str, Any]] = {}
         
-        parser_rule_names = list(ExecutionEngine.parserRuleFunc.keys())
-        lexer_rule_names = list(ExecutionEngine.lexerRuleFunc.keys())
+        parser_rule_names = list(FeGenGrammar.parserRuleFunc.keys())
+        lexer_rule_names = list(FeGenGrammar.lexerRuleFunc.keys())
         
         def trace_function(frame: FrameType, event: str, arg):
             if event == 'return':
