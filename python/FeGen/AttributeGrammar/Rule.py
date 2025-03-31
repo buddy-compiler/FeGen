@@ -431,11 +431,9 @@ class FeGenGrammar:
                 
         if when == "lex":
             func_dict = ExecutionEngine.lexerRuleFunc
-            global_sema_dict = ExecutionEngine.semaCodeForLexRule
             target_file = self.lexer_target_file
         elif when == "parse":
             func_dict = ExecutionEngine.parserRuleFunc
-            global_sema_dict = ExecutionEngine.semaFuncForParseRule
             target_file = self.parser_target_file
 
         
@@ -523,8 +521,6 @@ class FeGenGrammar:
     def lexer(self) -> FeGenLexer:
         """return lexer of attribute grammar
         """
-        if self.lexerobj is not None:
-            return self.lexerobj
         from .ExecuteEngine import LexerProdGen
        
         
@@ -552,8 +548,6 @@ class FeGenGrammar:
 
 
     def parser(self, lexer: FeGenLexer, start = None) -> FeGenParser:
-        if self.parserobj is not None:
-            return self.parserobj
         from .ExecuteEngine import ParserProdGen
         # process source code and generate code for lexer
         ExecutionEngine.WHEN = "parse"
