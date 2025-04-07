@@ -1,6 +1,6 @@
 from FeGen.AttributeGrammar import *
 import logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 class MyGrammar(FeGenGrammar):
     def __init__(self):
@@ -34,7 +34,7 @@ class MyGrammar(FeGenGrammar):
         g = newParserRule()
         g_expr = self.add_expr()
         g.setProduction(g_expr)
-        g.set_attr("value", g_expr.get_attr("value"))
+        g.set_attr("value", g_expr.value)
         return g
         
     @parser

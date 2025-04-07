@@ -302,8 +302,11 @@ class FeGenParser:
         g.set_start(start)
 
         # report error for undefined symbols
-        if len(g.undefined_symbols()) != 0:
-            raise Exception()
+        undefined_symbols = g.undefined_symbols()
+        if len(undefined_symbols) != 0:
+            msg = f"undefined symbol: {undefined_symbols}"
+            logging.error(msg)
+            raise LexOrParseError(msg)
 
         # report unused terminals
         unused_terminals = g.unused_terminals()
@@ -348,6 +351,7 @@ class FeGenGrammar:
     
     WHEN: Literal['lex', 'parse', 'gen_ast', 'sema'] = "lex"
     
+    OUTDIR = ""
     
     def __init__(self, output_dir_name = ".fegen"):
         import hashlib
@@ -366,19 +370,19 @@ class FeGenGrammar:
         
         # set attr for plymodule
         src_dir = os.path.dirname(src_filepath)
-        outputdir = os.path.join(src_dir, self.output_dir_name, hash_code)
+        FeGenGrammar.OUTDIR = os.path.join(src_dir, self.output_dir_name, hash_code)
         self.do_generate = False
-        if not os.path.exists(outputdir):
+        if not os.path.exists(FeGenGrammar.OUTDIR):
             self.do_generate = True
-            os.makedirs(outputdir, exist_ok=True)
+            os.makedirs(FeGenGrammar.OUTDIR, exist_ok=True)
         # initialize lexer and parser
         self.lexerobj = None
         self.parserobj = None
 
         # create empty lex, parser and sema function file
-        self.lexer_target_file = os.path.join(outputdir, "lexer_functions.py")
-        self.parser_target_file = os.path.join(outputdir, "parser_functions.py")
-        self.sema_target_file = os.path.join(outputdir, "sema_functions.py")
+        self.lexer_target_file = os.path.join(FeGenGrammar.OUTDIR, "lexer_functions.py")
+        self.parser_target_file = os.path.join(FeGenGrammar.OUTDIR, "parser_functions.py")
+        self.sema_target_file = os.path.join(FeGenGrammar.OUTDIR, "sema_functions.py")
         
         
     def __update_rules(self, self_copy):
@@ -998,13 +1002,24 @@ class Alternate(Production):
         if not self._ifexist:
             return
                 
-        # _getframe(2): visit(this)(0) <-- check_when(1) <-- <caller>(2)
-        caller_frame : FrameType = sys._getframe(2)
-        if caller_frame.f_code.co_name == "get_attr":
-            # _getframe(4): visit(this)(0) <-- check_when(1) <-- get_attr(2) <-- check_when(3) <-- <caller>(4) 
-            caller_frame = sys._getframe(4)
+        f = sys._getframe()
+        sema_file = os.path.join(FeGenGrammar.OUTDIR, "sema_functions.py")
+        
+        local_dict = None
+        while f:
+            if os.path.samefile(f.f_code.co_filename, sema_file):
+                local_dict = f.f_locals
+                break
+            f = f.f_back 
+        if local_dict is None:
+            raise SemaError("unexcepted usage of Alternate.visit")
+        # # _getframe(2): visit(this)(0) <-- check_when(1) <-- <caller>(2)
+        # caller_frame : FrameType = sys._getframe(2)
+        # if caller_frame.f_code.co_name == "get_attr":
+        #     # _getframe(4): visit(this)(0) <-- check_when(1) <-- get_attr(2) <-- check_when(3) <-- <caller>(4) 
+        #     caller_frame = sys._getframe(4)
             
-        local_dict = caller_frame.f_locals
+        # local_dict = caller_frame.f_locals
         alt_func_name = self.template_alt_funcs[self.idx].__name__
         sema_alt_func : FunctionType = local_dict[alt_func_name]
         sema_alt_func.__globals__.update(self.alt_locals)
@@ -1093,6 +1108,11 @@ class ParserRule(Rule):
     def setProduction(self, *args):
         super().setProduction(*args)
 
+
+    @execute_when("sema")
+    def has_attr(self, name: str) -> bool:
+        return name in self.attributes
+
     
     @execute_when("sema")
     def set_attr(self, name: str, value):
@@ -1109,6 +1129,12 @@ class ParserRule(Rule):
         if attr is None:
             raise SemaError("parser rule `{rulename}` has no attribute {attrname}".format(rulename = self.name, attrname = name))
         return attr
+    
+    
+    @execute_when("sema")
+    def __getattr__(self, name: str):
+        return self.get_attr(name)
+    
     
     @execute_when("sema")
     def visit(self):
