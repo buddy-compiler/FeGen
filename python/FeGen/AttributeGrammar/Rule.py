@@ -25,6 +25,15 @@ class SemaError(Exception):
         super().__init__(msg)
 
 
+class AttrError(SemaError):
+    def __init__(self, msg):
+        super().__init__(msg)
+
+
+class NotExistError(SemaError):
+    def __init__(self, msg):
+        super().__init__(msg)
+
 class FeGenLexer:
     def __init__(self, regular_expression: Dict[str, str], ignore_re: str):
         # self.module = module
@@ -180,8 +189,8 @@ class ConcreteSyntaxTree:
             logging.warning("Method `ConcreteSyntaxTree.getText` should be called after `eval`")
         return self.root.getText()
 
-    def get_attr(self, name: str) -> Any:
-        return self.root.get_attr(name)
+    def get_attr(self, name: str, flatten = False) -> Any:
+        return self.root.get_attr(name, flatten)
 
 
     def visit(self):
@@ -670,8 +679,9 @@ class Production:
     def visit(self):
         raise NotImplementedError()
 
-    def get_attr(self, name: str):
-        return None
+    def get_attr(self, name: str, flatten = False):
+        msg = "get_attr is not implemented for class: {}".format(self.__class__.__name__)
+        raise AttrError(msg)
 
     def set_attr(self, name: str, value: Any):
         raise NotImplementedError()
@@ -733,17 +743,20 @@ class OneOrMore(Production):
 
 
     @execute_when("sema")
-    def get_attr(self, name):
-        """Collect attributes from children, if attribute dose not exist in any child, get None.\n
-        For example, obj = OneOrMore{has children: [child1{has attr: v=1}, child2{has no attr}, child3{has attr: v=2}]}, then `obj.get_attr("v") == [1, None, 2]`.
-        Args:
-            name (_str_): Name of attribute.
+    def get_attr(self, name, flatten = False):
+        """Collect attributes from children.
         """
         if not self._ifexist:
-            return None
+            raise NotExistError("Attempt to get attribute from not existed parser tree.")
         res = []
         for child in self.children:
-            res.append(child.get_attr(name))
+            if not child.exist():
+                continue
+            attr = child.get_attr(name, flatten)
+            if flatten and isinstance(attr, list):
+                res += attr
+            else:
+                res.append(attr)
         return res
 
 
@@ -807,21 +820,23 @@ class ZeroOrMore(Production):
     @execute_when("sema")
     def __len__(self):
         return self.children.__len__()
-
+    
 
     @execute_when("sema")
-    def get_attr(self, name):
-        """Collect attributes from children, if attribute dose not exist in any child, get None.\n
-        For example, obj = ZeroOrMore{has children: [child1{has attr: v=1}, child2{has no attr}, child3{has attr: v=2}]}, then `obj.get_attr("v") == [1, None, 2]`.
-
-        Args:
-            name (_str_): Name of attribute.
+    def get_attr(self, name, flatten = False):
+        """Collect attributes from children.
         """
         if not self._ifexist:
-            return None
+            raise NotExistError("Attempt to get attribute from not existed parser tree.")
         res = []
         for child in self.children:
-            res.append(child.get_attr(name))
+            if not child.exist():
+                continue
+            attr = child.get_attr(name, flatten)
+            if flatten and isinstance(attr, list):
+                res += attr
+            else:
+                res.append(attr)
         return res
 
     @execute_when("sema")
@@ -868,7 +883,7 @@ class ZeroOrOne(Production):
         """Get Attribute from child if exist, otherwise return None.
         """
         if not self._ifexist:
-            return None
+            raise NotExistError("Attempt to get attribute from not existed parser tree.")
         return self.prod.get_attr(name)
 
 
@@ -943,11 +958,40 @@ class Concat(Production):
     
     
     @execute_when("sema")
-    def get_attr(self, name):
-        """Concat have no attribute, return None
+    def get_attr(self, name, flatten = False):
+        """get attr from children, 
+        * if not attribute is existed any children, raise AttrError; 
+        * else if attribute existed in one child, return attribute; 
+        * else return list of attributes.
+        
+        For example: `concat = (A B C)`, 
+        * if none of A, B and C has attribute named `'v'`, then `concat.get_attr("v")` will raise AttrError;
+        * else if A has attribute `'v': 1`, then `concat.get_attr("v") == 1`;
+        * if A, B and C respectively have attribute `'v': 1`, `'v': 2` and `'v': 3`, then `concat.get_attr("v") == [1, 2, 3]`.
         """
-        return None
-
+        if not self._ifexist:
+            raise NotExistError("Attempt to get attribute from not existed parser tree.")
+        res: list = []
+        for child in self.rules:
+            if not child.exist():
+                continue
+            try:
+                attr = child.get_attr(name, flatten)
+                if flatten and isinstance(attr, list):
+                    res += attr
+                else:
+                    res.append(attr)
+            except AttrError:
+                continue
+            except Exception as e:
+                raise e
+        if len(res) == 0:
+            msg = "Concat: `{text}` has no attribute: `{name}`".format(text=self.getText(), name = name)
+            raise AttrError(msg)
+        elif len(res) == 1:
+            return res[0]
+        else:
+            return res
 
     @execute_when("sema")
     def visit(self):
@@ -1068,11 +1112,11 @@ class Alternate(Production):
     
     
     @execute_when("sema")
-    def get_attr(self, name):
+    def get_attr(self, name, flatten = False):
         """Get attribuet from matched branch
         """
         if not self._ifexist:
-            return None
+            raise NotExistError("Attempt to get attribute from not existed parser tree.")
         if not self.visited:
             self.visit()
         return self.prod.get_attr(name)
@@ -1125,9 +1169,9 @@ class ParserRule(Rule):
     
     
     @execute_when("sema")
-    def get_attr(self, name: str):
+    def get_attr(self, name: str, flatten = False):
         if not self._ifexist:
-            return None
+            raise NotExistError("Attempt to get attribute from not existed parser tree.")
         if not self.visited:
             self.visit()
         attr = self.attributes.get(name, None)
