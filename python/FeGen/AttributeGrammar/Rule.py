@@ -805,6 +805,11 @@ class ZeroOrMore(Production):
 
 
     @execute_when("sema")
+    def __len__(self):
+        return self.children.__len__()
+
+
+    @execute_when("sema")
     def get_attr(self, name):
         """Collect attributes from children, if attribute dose not exist in any child, get None.\n
         For example, obj = ZeroOrMore{has children: [child1{has attr: v=1}, child2{has no attr}, child3{has attr: v=2}]}, then `obj.get_attr("v") == [1, None, 2]`.

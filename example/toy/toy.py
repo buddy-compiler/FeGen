@@ -348,9 +348,6 @@ class ToyGrammar(FeGenGrammar):
     
 
     
-
-
-    
     @parser
     def literalList(self):
         g = newParserRule()
@@ -476,7 +473,7 @@ import sys
 
 if __name__ == "__main__":
     d = os.path.dirname(sys.argv[0])
-    example_file = "constant.toy"
+    example_file = "function.toy"
     example_path = os.path.join(d, example_file)
     with open(example_path) as f:
         code = f.read()

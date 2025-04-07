@@ -48,7 +48,7 @@ class ToyFunction:
     def __init__(self, name, params, mlirvalue):
         self.name = name
         self.params : Dict[str, ToyType] = params
-        self.mlirvalue: func.FuncOp = mlirvalue
+        self.mlirvalue: toy.FuncOp = mlirvalue
         
         
 class Scope:
@@ -58,8 +58,8 @@ class Scope:
     def loopup(self, name):
         return self.var_table.get(name)
     
-    def insert(self, name, var: ToyVar):
-        self.var_table.update({name: var})
+    def insert(self, var: ToyVar):
+        self.var_table.update({var.name: var})
 
 class Visitor:
     def __init__(self):
@@ -119,7 +119,7 @@ class Visitor:
         # update scope
         param_names = list(func_obj.params.keys())
         param_types = list(func_obj.params.values())
-        param_args = func_obj.mlirvalue.args
+        param_args = func_obj.mlirvalue.body.block.args
         for p_name, p_type, p_mlirvalue in zip(param_names, param_types, param_args):
             self.current_scope.insert(ToyVar(p_name, p_type, p_mlirvalue))
         # ser insert point to function
@@ -128,10 +128,21 @@ class Visitor:
         self.builder = Builder(InsertPoint.at_end(func_obj.mlirvalue.body.block))
         # get attr ops
         g_block.visit()
-        # insert return op
-        lastop = func_obj.mlirvalue.body.block._last_op
-        if lastop is None or lastop.name != "func.return":
-            self.builder.insert(func.ReturnOp())
+        # Implicitly return void if no return statement was emitted.
+        return_op = None
+        block = func_obj.mlirvalue.body.block
+        if block.ops:
+            last_op = block.last_op
+            if isinstance(last_op, toy.ReturnOp):
+                return_op = last_op
+                if return_op.input is not None:
+                    return_arg = return_op.input
+                    return_types = [return_arg.type]
+                    input_types = func_obj.mlirvalue.function_type.inputs
+                    func_obj.mlirvalue.function_type = func.FunctionType.from_lists(input_types, return_types)
+        if return_op is None:
+            self.builder.insert(toy.ReturnOp())
+        # restore builder
         self.builder = parent_builder
         # set attr func_inst
         g.set_attr("func_inst", func_obj)
@@ -146,8 +157,8 @@ class Visitor:
             # get mlir function params
             func_inputtys = [paramty.mlirty for paramty in params.values()]
         func_mlirty = func.FunctionType.from_lists(func_inputtys, [])
-        visibility = "public" if name == "main" else "private"
-        func_mlirvalue = func.FuncOp(name=name, function_type=func_mlirty, visibility=visibility)
+        private = (not name == "main")
+        func_mlirvalue = toy.FuncOp(name, func_mlirty, private=private)
         func_inst = ToyFunction(name, params, func_mlirvalue)
         # set attr func_inst
         g.set_attr("func_inst", func_inst)
@@ -167,7 +178,7 @@ class Visitor:
     def visit_param(self, g: ParserRule, g_alt: Alternate):
         actual_alt = g_alt.get_actual_alt()
         if g_alt.get_actual_alt_index() == 0:
-            assert isinstance(actual_alt, ParserRule)
+            assert isinstance(actual_alt, TerminalRule)
             name = actual_alt.getText()
             ty = self.getUnrankedTensorType()
         else:
@@ -208,7 +219,7 @@ class Visitor:
             self.builder.insert(reshapeop)
             value = reshapeop.res
         var = ToyVar(name, ty, value)
-        self.current_scope.insert(name, var)
+        self.current_scope.insert(var)
         
         
     def visit_type(self, g: ParserRule, g_first_num: TerminalRule, g_other_num: ZeroOrMore):
@@ -226,10 +237,10 @@ class Visitor:
     
     def visit_returnExpr(self, g: ParserRule, g_alt: Alternate):
         if g_alt.get_actual_alt_index() == 0:
-            self.builder.insert(func.ReturnOp())
+            self.builder.insert(toy.ReturnOp())
         else:
             ret = g_alt.get_actual_alt()[1].get_attr("value")
-            self.builder.insert(func.ReturnOp(ret))
+            self.builder.insert(toy.ReturnOp(ret))
     
     def visit_expression(self, g: ParserRule, g_add: ParserRule):
         g.set_attr("value", g_add.get_attr("value"))
@@ -347,6 +358,29 @@ class Visitor:
         func_name = g_id.getText()
         if func_name == "print":
             value = g_first_expr.get_attr("value")
+            assert len(g_other_expr) == 0, f"`print` does not accept multiple arguments: {g.getText()}"
             self.builder.insert(toy.PrintOp(value))
+        elif func_name == "transpose":
+            value = g_first_expr.get_attr("value")
+            ty = g_first_expr.get_attr("type")
+            assert len(g_other_expr) == 0, "`transpose` does not accept multiple arguments."
+            trans = self.builder.insert(toy.TransposeOp(value))
+            if isinstance(ty, ToyRankedTensorType):
+                shape = ty.shape
+                ty = self.getRankedTensorType(shape.reverse())
+            g.set_attr("value", trans.res)
+            g.set_attr("type", ty)
         else:
-            raise ToyError("call function is not implemented.")
+            func_inst = self.funcmap.get(func_name)
+            if func_inst is None:
+                raise ToyError(f"undefined reference to function: `{func_name}`")
+            callee = func_inst.name
+            operands = []
+            operands.append(g_first_expr.get_attr("value"))
+            for g_comma_expr in g_other_expr:
+                g_expr = g_comma_expr[1]
+                assert isinstance(g_expr, ParserRule)
+                operands.append(g_expr.get_attr("value"))
+            funccall = self.builder.insert(toy.GenericCallOp(callee, operands, [toy.UnrankedTensorTypeF64(builtin.f64)]))
+            g.set_attr("value", funccall.res[0])
+            g.set_attr("type", self.getUnrankedTensorType())
