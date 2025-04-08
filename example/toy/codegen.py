@@ -1,5 +1,5 @@
 from FeGen import *
-from FeGen.AttributeGrammar.Rule import Rule, ParserRule, TerminalRule, Production, OneOrMore, ZeroOrMore, ZeroOrOne, Alternate, Concat
+from FeGen.AttributeGrammar.Rule import Rule, ParserRule, TerminalRule, Production, OneOrMore, ZeroOrMore, ZeroOrOne, Alternate, Concat, AttrError
 from typing import Dict, List, Set
 
 from xdsl.dialects import builtin, func, arith, tosa
@@ -309,30 +309,30 @@ class Visitor:
             assert isinstance(g_content, ZeroOrOne)
             if g_content.exist():
                 g_content = g_content.prod
-                g_first: ParserRule = g_content[0]
-                g_other: List[ParserRule] = [g_comma_tensor[1] for g_comma_tensor in g_content[1]]
-                first_value = g_first.get_attr("value")
-                isnum = not g_first.has_attr("type")
+                data = g_content.get_attr("value", True)
+                isnum = False
+                try:
+                    type_list : List[ToyRankedTensorType] = g_content.get_attr("type", True)
+                except AttrError:
+                    isnum = True
+                    
                 if isnum:
-                    data = [first_value]
-                    for lit in g_other:
-                        data.append(lit.get_attr("value"))
-                        assert not lit.has_attr("type")
                     dataty = self.getRankedTensorType([len(data)])
                     g.set_attr("value", data)
                     g.set_attr("type", dataty)
                 else:
-                    assert isinstance(first_value, list)
-                    firstty: ToyRankedTensorType = g_first.get_attr("type")
-                    assert len(firstty.shape) != 0
-                    data = [*first_value]
-                    for lit in g_other:
-                        data += lit.get_attr("value")
-                        assert lit.has_attr("type")
-                        litty = lit.get_attr("type")
-                        assert litty == firstty
-                    dataty = self.getRankedTensorType([len(g_other) + 1, *firstty.shape])
-                    g.set_attr("value", data)
+                    type_list: List[ToyRankedTensorType] = g_content.get_attr("type", True)
+                    first_ty = type_list[0]
+                    for ty in type_list:
+                        if not first_ty == ty:
+                            msg = "expect elements of tensor literal have the same shape: {}".format(g.getText())
+                            raise ToyError(msg)
+                    dataty = self.getRankedTensorType([len(data), *first_ty.shape])
+                    # flatten data
+                    flatten_data = []
+                    for e in data:
+                        flatten_data += e
+                    g.set_attr("value", flatten_data)
                     g.set_attr("type", dataty)
             else:
                 g.set_attr("value", [])
@@ -354,17 +354,17 @@ class Visitor:
         g.set_attr("value", var.mlirvalue)
         g.set_attr("type", var.ty)
         
-    def visit_func_call(self, g: ParserRule, g_id: TerminalRule, g_first_expr: ParserRule, g_other_expr: ZeroOrMore):
+    def visit_func_call(self, g: ParserRule, g_id: TerminalRule, g_param: ZeroOrOne):
         func_name = g_id.getText()
         if func_name == "print":
-            value = g_first_expr.get_attr("value")
-            assert len(g_other_expr) == 0, f"`print` does not accept multiple arguments: {g.getText()}"
-            self.builder.insert(toy.PrintOp(value))
+            values = g_param.get_attr("value", True)
+            assert len(values) == 1, f"`print` does not accept multiple arguments: {g.getText()}"
+            self.builder.insert(toy.PrintOp(values[0]))
         elif func_name == "transpose":
-            value = g_first_expr.get_attr("value")
-            ty = g_first_expr.get_attr("type")
-            assert len(g_other_expr) == 0, "`transpose` does not accept multiple arguments."
-            trans = self.builder.insert(toy.TransposeOp(value))
+            values = g_param.get_attr("value", True)
+            assert len(values) == 1, "`transpose` does not accept multiple arguments."
+            ty = g_param.get_attr("type", True)[0]
+            trans = self.builder.insert(toy.TransposeOp(values[0]))
             if isinstance(ty, ToyRankedTensorType):
                 shape = ty.shape
                 ty = self.getRankedTensorType(shape.reverse())
@@ -376,11 +376,9 @@ class Visitor:
                 raise ToyError(f"undefined reference to function: `{func_name}`")
             callee = func_inst.name
             operands = []
-            operands.append(g_first_expr.get_attr("value"))
-            for g_comma_expr in g_other_expr:
-                g_expr = g_comma_expr[1]
-                assert isinstance(g_expr, ParserRule)
-                operands.append(g_expr.get_attr("value"))
+            if g_param.exist():
+                operands = g_param.get_attr("value", True)
+            
             funccall = self.builder.insert(toy.GenericCallOp(callee, operands, [toy.UnrankedTensorTypeF64(builtin.f64)]))
             g.set_attr("value", funccall.res[0])
             g.set_attr("type", self.getUnrankedTensorType())

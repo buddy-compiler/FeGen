@@ -753,7 +753,7 @@ class OneOrMore(Production):
             if not child.exist():
                 continue
             attr = child.get_attr(name, flatten)
-            if flatten and isinstance(attr, list):
+            if flatten and isinstance(attr, list) and not isinstance(child, ParserRule):
                 res += attr
             else:
                 res.append(attr)
@@ -833,7 +833,7 @@ class ZeroOrMore(Production):
             if not child.exist():
                 continue
             attr = child.get_attr(name, flatten)
-            if flatten and isinstance(attr, list):
+            if flatten and isinstance(attr, list) and not isinstance(child, ParserRule):
                 res += attr
             else:
                 res.append(attr)
@@ -879,12 +879,12 @@ class ZeroOrOne(Production):
     
     
     @execute_when("sema")
-    def get_attr(self, name):
+    def get_attr(self, name, flatten = False):
         """Get Attribute from child if exist, otherwise return None.
         """
         if not self._ifexist:
             raise NotExistError("Attempt to get attribute from not existed parser tree.")
-        return self.prod.get_attr(name)
+        return self.prod.get_attr(name, flatten)
 
 
     @execute_when("sema")
@@ -960,13 +960,9 @@ class Concat(Production):
     @execute_when("sema")
     def get_attr(self, name, flatten = False):
         """get attr from children, 
-        * if not attribute is existed any children, raise AttrError; 
-        * else if attribute existed in one child, return attribute; 
-        * else return list of attributes.
         
         For example: `concat = (A B C)`, 
         * if none of A, B and C has attribute named `'v'`, then `concat.get_attr("v")` will raise AttrError;
-        * else if A has attribute `'v': 1`, then `concat.get_attr("v") == 1`;
         * if A, B and C respectively have attribute `'v': 1`, `'v': 2` and `'v': 3`, then `concat.get_attr("v") == [1, 2, 3]`.
         """
         if not self._ifexist:
@@ -977,7 +973,7 @@ class Concat(Production):
                 continue
             try:
                 attr = child.get_attr(name, flatten)
-                if flatten and isinstance(attr, list):
+                if flatten and isinstance(attr, list) and not isinstance(child, ParserRule):
                     res += attr
                 else:
                     res.append(attr)
@@ -988,8 +984,6 @@ class Concat(Production):
         if len(res) == 0:
             msg = "Concat: `{text}` has no attribute: `{name}`".format(text=self.getText(), name = name)
             raise AttrError(msg)
-        elif len(res) == 1:
-            return res[0]
         else:
             return res
 
@@ -1176,7 +1170,7 @@ class ParserRule(Rule):
             self.visit()
         attr = self.attributes.get(name, None)
         if attr is None:
-            raise SemaError("parser rule `{rulename}` has no attribute {attrname}".format(rulename = self.name, attrname = name))
+            raise AttrError("parser rule `{rulename}` has no attribute {attrname}".format(rulename = self.name, attrname = name))
         return attr
     
     

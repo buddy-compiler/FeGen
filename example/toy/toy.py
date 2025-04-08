@@ -343,7 +343,7 @@ class ToyGrammar(FeGenGrammar):
         g_other_expr = zero_or_more(concat(self.Comma(), self.expression()))
         g_param = zero_or_one(concat(g_first_expr, g_other_expr))
         g.setProduction(g_id, self.ParentheseOpen(), g_param, self.ParentheseClose())
-        self.visitor.visit(g, g_id, g_first_expr, g_other_expr)
+        self.visitor.visit(g, g_id, g_param)
         return g
     
 

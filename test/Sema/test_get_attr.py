@@ -9,14 +9,15 @@ class MyGram(FeGenGrammar):
         g = newParserRule()
         g_concat = concat(zero_or_more(concat(self.number(), self.Comma())), self.number())
         g.setProduction(g_concat)
-        g.set_attr("v", g_concat.get_attr("v", True))
+        v = g_concat.get_attr("v", True)
+        g.set_attr("v", v)
         return g
     
     @parser
     def number(self):
         g = newParserRule()
         g_num = self.NUM()
-        g.set_attr("v", g_num.getText())
+        g.set_attr("v", [g_num.getText()])
         g.setProduction(g_num)
         return g
     
@@ -33,4 +34,7 @@ def test():
     myl = g.lexer()
     myp = g.parser(myl, "nums")
     tree = myp.parse("100, 200, 300")
-    print(tree.get_attr("v", True))
+    print(tree.get_attr("v"))
+
+
+test()
